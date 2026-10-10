@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# bigscreen URL - open URL on the TV, from any computer on the same Wi-Fi, as
+# the remote's reading page: the phone then scrolls it, changes the text size and
+# plays its videos. Starts the TV's Chrome first if it isn't running.
+#
+# Set TVREMOTE to the address install.sh printed, e.g. in ~/.bashrc:
+#   export TVREMOTE=http://192.168.1.50:7700
+set -e
+url=${1:?usage: bigscreen URL}
+tv=${TVREMOTE:?set TVREMOTE to the remote address install.sh printed, e.g. http://192.168.1.50:7700}
+open() { curl -s -m30 -G --data-urlencode "url=$url" "$tv/act/open" | grep -q '"ok":true'; }
+open || { curl -s -m40 "$tv/act/start" >/dev/null; open; } \
+  && echo "Opened on the TV" || { echo "Could not open it - is tvremote running at $tv?"; exit 1; }

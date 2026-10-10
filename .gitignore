@@ -1,0 +1,10 @@
+# Settings and state are per household
+config.edn
+deploy.env
+state.edn*
+chrome.log
+chrome.err
+*.bak*
+
+# Our own notes: addresses and household details
+TVREMOTE.md

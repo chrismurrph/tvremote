@@ -1,0 +1,24 @@
+;; tvremote settings. Copy this file to config.edn beside tvremote.clj and
+;; change what you need; anything left out uses the default shown here.
+{;; The names each phone can pick from, so each person gets their own Recent
+ ;; lists and places. Leave empty and each phone asks for a name instead.
+ :people []                       ; e.g. ["Ann" "Bob"]
+
+ ;; The port the phone page is served on: http://<this computer>:7700/
+ :port 7700
+
+ ;; The port the remote uses to control its Chrome. Only reachable from this
+ ;; computer itself.
+ :cdp-port 9222
+
+ ;; How to start Chrome. nil means: google-chrome if it is installed,
+ ;; otherwise the Flatpak (flatpak run com.google.Chrome).
+ :chrome nil                      ; e.g. ["/usr/bin/google-chrome-stable"]
+
+ ;; Extra Chrome flags, added to the remote's own.
+ :chrome-flags []                 ; e.g. ["--ozone-platform=wayland"]
+
+ ;; The remote's own Chrome profile (Chrome won't allow remote control of
+ ;; your normal one). nil means ~/.config/tvremote-chrome-profile, or for the
+ ;; Flatpak ~/.var/app/com.google.Chrome/config/tvremote-profile.
+ :profile-dir nil}

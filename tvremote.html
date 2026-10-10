@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#141414">
+<title>TV Remote</title>
+<style>
+:root{--bg:#141414;--card:#222;--line:#333;--fg:#eee;--soft:#999;--red:#e50914;--ok:#2e9e44;--bad:#d03030}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.35 system-ui,sans-serif;padding:12px 16px 40px;-webkit-tap-highlight-color:transparent}
+h2{font-size:15px;color:var(--soft);font-weight:600;margin:22px 0 8px}
+#status{background:var(--card);border-radius:12px;padding:10px 14px;min-height:52px}
+#now{font-weight:600}
+#sub{color:var(--soft);font-size:14px}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+button{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 6px;cursor:pointer;transition:background .15s,transform .08s}
+button:active{transform:scale(.96)}
+button:disabled{opacity:.4;cursor:default}
+button.big{font-size:26px;padding:18px 6px}
+button.busy{background:#444}
+button.done{background:var(--ok)}
+button.fail{background:var(--bad)}
+button.red{background:var(--red);border-color:var(--red)}
+#searchbox{display:flex;gap:8px}
+#q{flex:1;font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:12px}
+#msg{color:var(--soft);font-size:14px;margin-top:8px;min-height:1.2em}
+.row h3{font-size:15px;margin:18px 0 6px}
+.strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;scroll-snap-type:x proximity}
+.tile{flex:0 0 42%;max-width:180px;scroll-snap-align:start;background:none;border:none;padding:0;text-align:left;border-radius:8px}
+.tile img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;display:block;background:var(--card)}
+.tile span{display:block;font-size:13px;color:var(--soft);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.done img{outline:3px solid var(--ok)}
+.tile.busy img{opacity:.5}
+.tile.fail img{outline:3px solid var(--bad)}
+.profiles{display:flex;flex-wrap:wrap;gap:10px}
+.tabrow{display:flex;gap:8px;margin-top:8px}
+.tabrow .tname{flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:12px}
+.tabrow .tname.front{border-color:var(--ok)}
+.tabrow .tx{flex:0 0 48px}
+.pgtitle{font-weight:600;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.svc{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin:22px 0 4px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.svc button{border:none;border-radius:0;background:var(--card);font-weight:600}
+.svc button.on{background:var(--red)}
+.svc button.on.yt{background:#c00}
+.svc button.on.pg{background:#3a6ea5}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid .tile{max-width:none}
+.grid .tile span{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;color:var(--fg)}
+.grid .tile small{display:block;color:var(--soft);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chips button{padding:8px 12px;font-size:14px;border-radius:18px}
+.crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0 4px}
+.crumbs button{padding:8px 14px;border-radius:18px;font-weight:600}
+.crumbs button.on{background:#3a6ea5;border-color:#3a6ea5}
+.crumbs span{color:var(--soft)}
+#recent h2{margin:14px 0 2px}
+.link{display:block;width:100%;text-align:left;margin-top:8px;padding:10px 12px}
+.link small{display:block;color:var(--soft);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chips button.sel{background:var(--red);border-color:var(--red)}
+#whorow{display:flex;justify-content:space-between;align-items:center;margin:-4px 0 6px}
+#wake{color:var(--soft);font-size:13px}
+#who{padding:4px 12px;font-size:13px;border-radius:14px;color:var(--soft)}
+#whobox{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px}
+#whobox .profiles button{flex:1;font-weight:600}
+</style>
+</head>
+<body>
+<div id="whobox" style="display:none"><div style="margin-bottom:10px">Who uses this phone? The TV keeps each person's last show and place.</div>
+<div class="profiles" id="whobtns"></div></div>
+<div id="whorow"><span id="wake"></span><button id="who" onclick="askWho()">…</button></div>
+<div id="status"><div id="now">…</div><div id="sub"></div></div>
+<div id="startrow" style="display:none;margin-top:12px"><button id="startbtn" class="red" style="width:100%" onclick="act(this,'start')">▶ Start Chrome on the TV</button>
+<button id="closeall" style="width:100%;margin-top:10px;display:none" onclick="act(this,'close-all')">✕ Close all other Chrome windows</button></div>
+
+<div class="pad" id="vidpad">
+  <button onclick="act(this,'seek?ms=-10000')">⏪ 10s</button>
+  <button class="big" onclick="act(this,'toggle')">⏯</button>
+  <button onclick="act(this,'seek?ms=10000')">10s ⏩</button>
+  <button onclick="act(this,'volume?d=-0.1')">🔉 Vol −</button>
+  <button onclick="act(this,'skip')">⏭ Skip</button>
+  <button onclick="act(this,'volume?d=0.1')">🔊 Vol +</button>
+  <button onclick="act(this,'seek?ms=-60000')">⏪ 1m</button>
+  <button onclick="act(this,'full')">⛶ Full</button>
+  <button onclick="act(this,'seek?ms=60000')">1m ⏩</button>
+</div>
+<div id="readpad" style="display:none">
+<div class="pad">
+  <button onclick="act(this,'page-scroll?how=up')">▲ Up</button>
+  <button onclick="act(this,'page-scroll?how=top')">⤒ Top</button>
+  <button onclick="act(this,'page-scroll?how=down')">▼ Down</button>
+</div>
+<div class="pad" style="grid-template-columns:1fr 1fr">
+  <button onclick="pageVideos(this)">🎬 Videos</button>
+  <button onclick="pageLinks(this)">🔗 Links</button>
+  <button onclick="act(this,'page-reload');document.getElementById('pgvideos').innerHTML=''">↻ Reload</button>
+  <button onclick="act(this,'page-back')">↩ Back to page</button>
+</div>
+<div class="pad">
+  <button onclick="zoom(this,'out')">A− Smaller</button>
+  <button id="zoomval" onclick="zoom(this,'reset')">100%</button>
+  <button onclick="zoom(this,'in')">A+ Bigger</button>
+</div>
+</div>
+
+<div class="svc"><button id="svc-nf" onclick="switchTo(this,'nf')">Netflix</button><button id="svc-yt" class="yt" onclick="switchTo(this,'yt')">YouTube</button><button id="svc-page" class="pg" onclick="switchTo(this,'page')">Reading</button></div>
+<div id="recent"></div>
+
+<div id="reading" style="display:none">
+<h2>📖 Reading on the TV</h2>
+<div id="pgtitle" class="pgtitle"></div>
+<div id="crumbs" class="crumbs"></div>
+<div id="pgvideos"></div>
+</div>
+
+<h2>🗂 Tabs on the TV</h2>
+<button style="width:100%" onclick="tabs(this)">Show tabs</button>
+<div id="tablist"></div>
+
+<div id="find">
+<div id="searchbox">
+  <input id="q" type="search" placeholder="Search Netflix" enterkeyhint="search" onkeydown="if(event.key==='Enter')search(document.getElementById('gobtn'))">
+  <button id="gobtn" onclick="search(this)">Search</button>
+</div>
+<div class="pad" id="nfbtns">
+  <button onclick="load(this,'browse')">🏠 Home</button>
+  <button onclick="load(this,'shows')">📺 Shows</button>
+  <button onclick="load(this,'movies')">🎬 Movies</button>
+</div>
+<div class="pad" id="ytbtns" style="display:none">
+  <button onclick="load(this,'yt-home')">🏠 Home</button>
+  <button onclick="load(this,'yt-subs')">📬 Subscriptions</button>
+  <button onclick="load(this,'yt-history')">🕘 History</button>
+</div>
+<div id="genres"></div>
+<div id="msg"></div>
+<div id="results"></div>
+</div>
+
+<h2>Open a link on the TV</h2>
+<div id="openbox" style="display:flex;gap:8px">
+  <input id="link" type="url" placeholder="https://…" enterkeyhint="go" style="flex:1;font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:12px" onkeydown="if(event.key==='Enter')openLink(document.getElementById('openbtn'))">
+  <button id="openbtn" onclick="openLink(this)">Open</button>
+</div>
+
+<script>
+function flash(b,cls,ms){b.classList.remove('busy','done','fail');b.classList.add(cls);
+  if(ms)setTimeout(function(){b.classList.remove(cls)},ms);}
+// who: the person holding this phone, kept in its localStorage and sent with
+// every action as u=, so the TV saves and loads each person's own last watched.
+var who=null;try{who=localStorage.getItem('tvremote-who');}catch(e){}
+function showWho(){document.getElementById('who').textContent=who?('👤 '+who.charAt(0).toUpperCase()+who.slice(1)):'👤 Who?';
+  document.getElementById('whobox').style.display=who?'none':'';}
+// The names come from the server's :people setting; with none set, the phone
+// asks for one. What's kept and sent is a plain lower-case form of the name.
+function slug(n){return String(n).toLowerCase().replace(/[^a-z]/g,'').slice(0,20);}
+function setWho(n){n=slug(n);if(!n)return;who=n;try{localStorage.setItem('tvremote-who',n);}catch(e){}showWho();}
+function loadPeople(){fetch('/config').then(function(r){return r.json()}).then(function(c){
+  var box=document.getElementById('whobtns'),ps=c.people||[];
+  box.innerHTML=ps.length?ps.map(function(p){return '<button data-n="'+esc(p)+'" onclick="setWho(this.dataset.n)">'+esc(p)+'</button>'}).join(''):
+    '<input id="whoname" placeholder="Your name" style="flex:1;font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:12px">'+
+    '<button onclick="setWho(document.getElementById(\'whoname\').value)">OK</button>';}).catch(function(){});}
+function askWho(){document.getElementById('whobox').style.display='';}
+function call(path){return fetch('/act/'+path+(path.indexOf('?')<0?'?':'&')+'u='+encodeURIComponent(who||''))
+  .then(function(r){return r.json()});}
+function act(b,path){flash(b,'busy');
+  call(path).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok&&r.error)msg(r.error);setTimeout(poll,400);})
+  .catch(function(e){flash(b,'fail',900);msg('No answer from the media machine: '+e);});}
+function msg(t){document.getElementById('msg').textContent=t||'';}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]});}
+function clock(ms){if(ms==null)return'';var s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor(s%3600/60);s=s%60;
+  return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(s).padStart(2,'0');}
+
+function poll(){
+  fetch('/status?u='+encodeURIComponent(who||'')).then(function(r){return r.json()}).then(function(s){
+    document.getElementById('startrow').style.display=s.chrome?'none':'block';
+    // Start only once no other Chrome is open — the server refuses it too
+    var sb=document.getElementById('startbtn'),blocked=(!s.chrome&&s.others>0);
+    sb.disabled=blocked;sb.textContent=blocked?'▶ Start Chrome — close the other one first':'▶ Start Chrome on the TV';
+    document.getElementById('closeall').style.display=(!s.chrome&&s.others>0)?'block':'none';
+    var now=document.getElementById('now'),sub=document.getElementById('sub');
+    if(!s.chrome){now.textContent='Chrome is not running on the TV';sub.textContent='';return;}
+    if(s.error){now.textContent='TV tab busy';sub.textContent=s.error;return;}
+    // a video from Reading is still Reading, as far as the switch goes
+    var v=(s.service==='rv'||s.service==='rl')?'page':s.service;
+    if(!switching&&v&&v!==svc)setSvc(v);
+    if(!switching)setControls(s.service);
+    if(s.page)document.getElementById('pgtitle').textContent=s.page.title||s.page.url;
+    renderCrumbs(s);
+    renderRecent(s,v);
+    if(s.zoom)document.getElementById('zoomval').textContent=zoomText(s);
+    if(s.service==='rl'){now.textContent='🔗 Level '+(level(s)||'?')+(s.link&&s.link.title?' — '+s.link.title:'');sub.textContent='Tap 📖 or a number to go back';return;}
+    if(s.service==='page'){now.textContent='📖 Reading'+(s.page&&s.page.title?' — '+s.page.title:'');sub.textContent='';return;}
+    if(s.away){now.textContent='TV is on another page (signing in?)';sub.textContent='';return;}
+    var watching=/\/watch/.test(s.url||'');
+    var name=s.title||[s.picked,s.episode].filter(Boolean).join(' · ');
+    now.textContent=watching?((s.playing?'▶ Playing':'⏸ Paused')+(s.service==='rv'?' from Reading':'')+(name?' — '+name:'')):(s.service==='yt'?'On YouTube · not playing':'On Netflix · not playing');
+    sub.textContent=(watching&&s.duration)?clock(s.time)+' / '+clock(s.duration)+(s.volume!=null?'  ·  vol '+Math.round(s.volume*100)+'%':''):'';
+  }).catch(function(){document.getElementById('now').textContent='Media machine not answering';});}
+
+function render(r){
+  var out=document.getElementById('results');out.innerHTML='';msg('');
+  if(r.kind==='login'){msg('Netflix wants a login on the TV — sign in there once with a keyboard.');return;}
+  if(r.kind==='profiles'){
+    out.innerHTML='<h2>Who’s watching?</h2><div class="profiles">'+r.profiles.map(function(p){
+      return '<button onclick="load(this,\'profile?i='+p.i+'\')">'+esc(p.name)+'</button>'}).join('')+'</div>';return;}
+  if(r.genres&&r.genres.length)document.getElementById('genres').innerHTML='<div class="chips">'+r.genres.map(function(g){
+      return '<button onclick="pickGenre(this,\''+g.id+'\')">'+esc(g.name)+'</button>'}).join('')+'</div>';
+  if(r.kind!=='titles'||!r.rows||!r.rows.length){msg(r.note||('Nothing found'+(r.url?' ('+r.url+')':'')));return;}
+  if(svc==='yt'){out.innerHTML='<div class="grid">'+r.rows[0].items.map(function(it){
+      return '<button class="tile" onclick="play(this,\''+it.id+'\',this.dataset.t)" data-t="'+esc(it.title)+'">'+
+        '<img loading="lazy" src="'+esc(it.img)+'" alt=""><span>'+esc(it.title)+'</span>'+
+        (it.channel?'<small>'+esc(it.channel)+'</small>':'')+'</button>'}).join('')+'</div>';return;}
+  out.innerHTML=r.rows.map(function(row){
+    return '<div class="row"><h3>'+esc(row.title)+'</h3><div class="strip">'+row.items.map(function(it){
+      return '<button class="tile" onclick="play(this,\''+it.id+'\',this.dataset.t)" data-t="'+esc(it.title)+'">'+
+        (it.img?'<img loading="lazy" src="'+esc(it.img)+'" alt="">':'<img alt="">')+'<span>'+esc(it.title)+'</span></button>'}).join('')+
+      '</div></div>'}).join('');}
+
+// svc: the current service as the phone shows it — the TV's, from /status,
+// except while a switch it asked for is still on its way.
+var svc=null,switching=false;
+// One control area: the video buttons while a video is showing (Netflix,
+// YouTube, or a video played from a page), else the Reading buttons.
+function setControls(raw){var reading=(raw==='page'||raw==='rl');
+  document.getElementById('vidpad').style.display=reading?'none':'';
+  document.getElementById('readpad').style.display=reading?'':'none';}
+function setSvc(s){var changed=(s!==svc);svc=s;
+  ['nf','yt','page'].forEach(function(k){document.getElementById('svc-'+k).classList.toggle('on',s===k);});
+  document.getElementById('find').style.display=(s==='page')?'none':'';
+  document.getElementById('reading').style.display=(s==='page')?'':'none';
+  document.getElementById('nfbtns').style.display=s==='nf'?'':'none';
+  document.getElementById('ytbtns').style.display=s==='yt'?'':'none';
+  document.getElementById('q').placeholder=s==='yt'?'Search YouTube':'Search Netflix';
+  if(changed){document.getElementById('results').innerHTML='';document.getElementById('genres').innerHTML='';}}
+function switchTo(b,s){flash(b,'busy');switching=true;msg('Switching the TV…');
+  call('switch?to='+s).then(function(r){switching=false;flash(b,r.ok?'done':'fail',900);
+    if(r.ok){setSvc(s);setControls(s);msg(r.loaded?('Loaded '+r.loaded+' — paused, ready to play'):'');}else msg(r.error);setTimeout(poll,400);})
+  .catch(function(e){switching=false;flash(b,'fail',900);msg('No answer: '+e);});}
+function load(b,path){flash(b,'busy');msg('Reading '+(svc==='yt'?'YouTube':'Netflix')+' on the TV… (a long page takes a while)');
+  if(!/^genre/.test(path))document.getElementById('genres').innerHTML='';
+  call(path).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok){msg(r.error);return;}render(r);})
+  .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
+function pageVideos(b){flash(b,'busy');
+  call('page-videos').then(function(r){flash(b,r.ok?'done':'fail',900);
+    var box=document.getElementById('pgvideos');
+    if(!r.ok){msg(r.error);return;}
+    if(!r.videos.length){box.innerHTML='<p class="tile" style="color:var(--soft)">No YouTube videos on this page</p>';return;}
+    box.innerHTML='<div class="grid" style="margin-top:12px">'+r.videos.map(function(v){
+      return '<button class="tile" onclick="playVid(this,\''+v.id+'\')"><img loading="lazy" src="'+esc(v.img)+'" alt=""><span>'+esc(v.title)+'</span></button>'}).join('')+'</div>';})
+  .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
+// Links on the page being read: one opens in the TV's reading-link tab, and
+// pressing Reading comes back to the page where it was.
+function pageLinks(b){flash(b,'busy');
+  call('page-links').then(function(r){flash(b,r.ok?'done':'fail',900);
+    var box=document.getElementById('pgvideos');
+    if(!r.ok){msg(r.error);return;}
+    if(!r.links.length){box.innerHTML='<p style="color:var(--soft)">No links on this page</p>';return;}
+    box.innerHTML=r.links.map(function(l){
+      return '<button class="link" data-u="'+esc(l.url)+'" onclick="openPageLink(this)">'+(l.jump?'↓ ':'')+esc(l.text)+'<small>'+(l.jump?'on this page · ':'')+esc(l.url)+'</small></button>'}).join('');})
+  .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
+function openPageLink(b){flash(b,'busy');
+  call('page-link?url='+encodeURIComponent(b.dataset.u)).then(function(r){flash(b,r.ok?'done':'fail',1500);
+    msg(r.ok?'Opened on the TV — press Reading to go back to the page':r.error);setTimeout(poll,1000);})
+  .catch(function(e){flash(b,'fail',1500);msg('No answer: '+e);});}
+// Breadcrumbs: 📖 is the page, 1..n the links followed from it (the TV's
+// link tab history). Redrawn only when they change, so a tap isn't lost.
+var crumbKey='';
+function level(s){var t=s.trail;if(!t)return 0;
+  for(var i=0;i<t.levels.length;i++)if(t.levels[i].id===t.current)return i+1;return 0;}
+function renderCrumbs(s){var t=s.trail,box=document.getElementById('crumbs');
+  var key=t?JSON.stringify([s.service,t]):'';if(key===crumbKey)return;crumbKey=key;
+  if(!t||!t.levels.length){box.innerHTML='';return;}
+  var at=(s.service==='rl')?level(s):0;
+  box.innerHTML='<button class="'+(at===0?'on':'')+'" onclick="switchTo(this,\'page\')">📖</button>'+
+    t.levels.map(function(l,i){return '<span>›</span><button class="'+(at===i+1?'on':'')+'" onclick="crumb(this,'+l.id+')">'+(i+1)+'</button>'}).join('');}
+// Recent: the last 5 this person watched or read on the current service,
+// under the switch. Tapping one loads it — paused at its place, or a page at
+// its scroll position. Redrawn only when it changes.
+var recentKey='',recentSvc=null;
+function renderRecent(s,v){var r=s.recent,box=document.getElementById('recent');
+  var key=JSON.stringify([v,r||[]]);if(key===recentKey)return;recentKey=key;recentSvc=v;
+  if(!r||!r.length){box.innerHTML='';return;}
+  box.innerHTML='<h2>Recent</h2>'+r.map(function(e,i){
+    return '<button class="link" onclick="resume(this,'+i+')">'+esc(e.title)+(e.sub?'<small>'+esc(e.sub)+'</small>':'')+'</button>'}).join('');}
+function resume(b,i){flash(b,'busy');msg('Loading on the TV…');switching=true;
+  call('resume?svc='+recentSvc+'&i='+i).then(function(r){switching=false;flash(b,r.ok?'done':'fail',900);
+    msg(r.ok?('Loaded '+r.loaded+(recentSvc==='page'?'':' — paused, ready to play')):r.error);setTimeout(poll,400);})
+  .catch(function(e){switching=false;flash(b,'fail',900);msg('No answer: '+e);});}
+function crumb(b,id){flash(b,'busy');
+  call('crumb?id='+id).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok)msg(r.error);setTimeout(poll,800);})
+  .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
+function playVid(b,id){flash(b,'busy');
+  call('page-video?id='+id).then(function(r){flash(b,r.ok?'done':'fail',1500);if(!r.ok)msg(r.error);setTimeout(poll,1500);})
+  .catch(function(e){flash(b,'fail',1500);msg('No answer: '+e);});}
+function openLink(b){var u=document.getElementById('link').value.trim();if(!u)return;
+  if(!/^https?:\/\//.test(u))u='https://'+u;
+  document.getElementById('link').blur();act(b,'open?url='+encodeURIComponent(u));
+  document.getElementById('pgvideos').innerHTML='';}
+var tabIcon={nf:'🎬',yt:'▶️',rv:'📖▶️',page:'📄'};
+function tabs(b){if(b)flash(b,'busy');
+  call('tabs').then(function(r){if(b)flash(b,r.ok?'done':'fail',900);if(!r.ok){msg(r.error);return;}
+    document.getElementById('tablist').innerHTML=r.tabs.map(function(t){
+      return '<div class="tabrow"><button class="tname" onclick="tabGo(this,\''+t.id+'\')">'+tabIcon[t.kind]+' '+esc(t.title||t.url)+'</button>'+
+        '<button class="tx" onclick="tabClose(this,\''+t.id+'\')" title="Close">✕</button></div>'}).join('')||'<p style="color:var(--soft)">No tabs</p>';})
+  .catch(function(e){if(b)flash(b,'fail',900);msg('No answer: '+e);});}
+function tabGo(b,id){flash(b,'busy');
+  call('tab?id='+id).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok)msg('That tab is gone');
+    document.querySelectorAll('.tname').forEach(function(x){x.classList.remove('front')});if(r.ok)b.classList.add('front');
+    document.getElementById('pgvideos').innerHTML='';setTimeout(poll,400);})
+  .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
+function tabClose(b,id){flash(b,'busy');
+  call('tab-close?id='+id).then(function(r){flash(b,r.ok?'done':'fail',900);setTimeout(function(){tabs();poll();},500);})
+  .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
+// The size shown: on a linked page also its site's adjustment, e.g. 150% (+20).
+function zoomText(r){var a=(r.adj==null)?'':' ('+(r.adj>=0?'+':'−')+Math.round(Math.abs(r.adj)*100)+')';
+  return Math.round(r.zoom*100)+'%'+a;}
+function zoom(b,how){flash(b,'busy');
+  call('page-zoom?how='+how).then(function(r){flash(b,r.ok?'done':'fail',700);
+    if(r.ok)document.getElementById('zoomval').textContent=zoomText(r);else msg(r.error);})
+  .catch(function(e){flash(b,'fail',700);msg('No answer: '+e);});}
+function pickGenre(b,id){document.querySelectorAll('.chips button').forEach(function(c){c.classList.remove('sel')});
+  b.classList.add('sel');load(b,'genre?id='+id);}
+function search(b){var q=document.getElementById('q').value.trim();if(!q)return;
+  document.getElementById('q').blur();load(b,(svc==='yt'?'yt-search':'search')+'?q='+encodeURIComponent(q));}
+function play(b,id,title){flash(b,'busy');
+  call((svc==='yt'?'yt-play':'play')+'?id='+id+'&t='+encodeURIComponent(title)).then(function(r){flash(b,r.ok?'done':'fail',1500);msg(r.ok?'Starting '+title+' on the TV':r.error);setTimeout(poll,2500);})
+  .catch(function(e){flash(b,'fail',1500);msg('No answer: '+e);});}
+
+// Keep the phone's screen on while the remote is open and in front (Screen
+// Wake Lock). Chrome allows it only on a secure address, so each phone marks
+// this one as secure in chrome://flags (TVREMOTE.md). Chrome lets go of it
+// whenever the page is hidden; it is taken again on return or on any tap.
+var wake=null;
+function showWake(){document.getElementById('wake').textContent=
+  wake?'☀ Screen stays on':(navigator.wakeLock?'':'Screen will sleep (see setup)');}
+function keepAwake(){if(!navigator.wakeLock||document.hidden||wake)return;
+  navigator.wakeLock.request('screen').then(function(l){wake=l;showWake();
+    l.addEventListener('release',function(){wake=null;showWake();});}).catch(function(){});}
+document.addEventListener('visibilitychange',keepAwake);
+document.addEventListener('click',keepAwake);
+showWake();keepAwake();
+loadPeople();
+showWho();
+setSvc('nf');
+poll();
+var timer=setInterval(function(){if(!document.hidden)poll();},3000);
+</script>
+</body>
+</html>
