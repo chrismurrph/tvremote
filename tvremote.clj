@@ -1252,7 +1252,12 @@
                     {:ok false :error "Couldn't close the other Chrome"}
                     :else
                     (let [ok (launch-chrome!)]
-                      (when ok (Thread/sleep 1500) (open-standard-tabs!))
+                      (when ok (Thread/sleep 1500) (open-standard-tabs!)
+                        ;; YouTube reopens behind Netflix and starts playing
+                        ;; unseen once its player loads, so keep it paused for
+                        ;; the first 20s (2026-10-10).
+                        (future (dotimes [_ 20] (Thread/sleep 1000)
+                                  (try (pause-youtube!) (catch Exception _ nil)))))
                       {:ok ok}))
         "home"    (do (navigate t (str nf "/browse")) {:ok true})
         "play"    (do (try (record-watching-2!) (catch Exception _ nil))

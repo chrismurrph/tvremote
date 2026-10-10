@@ -49,6 +49,8 @@ computer, sign in to Netflix, then to YouTube in the YouTube tab. This
 Chrome uses its own profile, so these sign-ins are separate from any other
 Chrome you use on that computer. That's needed only once.
 
+To update later: `cd ~/tvremote && git pull && ./install.sh`.
+
 ## Pair a phone
 
 1. On the phone, open the address `install.sh` printed.
