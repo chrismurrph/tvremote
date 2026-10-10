@@ -1253,11 +1253,13 @@
                     :else
                     (let [ok (launch-chrome!)]
                       (when ok (Thread/sleep 1500) (open-standard-tabs!)
-                        ;; YouTube reopens behind Netflix and starts playing
-                        ;; unseen once its player loads, so keep it paused for
-                        ;; the first 20s (2026-10-10).
-                        (future (dotimes [_ 20] (Thread/sleep 1000)
-                                  (try (pause-youtube!) (catch Exception _ nil)))))
+                        ;; Chrome reopens YouTube behind Netflix on the last
+                        ;; video, which then plays unseen. Send it home instead:
+                        ;; pressing YouTube reloads the person's own saved place
+                        ;; anyway (2026-10-10).
+                        (doseq [y (filter main-yt? (targets))
+                                :when (str/includes? (:url y) "/watch")]
+                          (try (cdp y "Page.navigate" {:url (str yt "/")}) (catch Exception _ nil))))
                       {:ok ok}))
         "home"    (do (navigate t (str nf "/browse")) {:ok true})
         "play"    (do (try (record-watching-2!) (catch Exception _ nil))
