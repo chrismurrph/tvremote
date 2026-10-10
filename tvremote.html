@@ -175,9 +175,8 @@ function poll(){
   fetch('/status?u='+encodeURIComponent(who||'')).then(function(r){return r.json()}).then(function(s){
     document.getElementById('startrow').style.display=s.chrome?'none':'block';
     // Start only once no other Chrome is open — the server refuses it too
-    var sb=document.getElementById('startbtn'),blocked=(!s.chrome&&s.others>0);
-    sb.disabled=blocked;sb.textContent=blocked?'▶ Start Chrome — close the other one first':'▶ Start Chrome on the TV';
-    document.getElementById('closeall').style.display=(!s.chrome&&s.others>0)?'block':'none';
+    var sb=document.getElementById('startbtn'),other=(!s.chrome&&s.others>0);
+    sb.textContent=other?'▶ Take over the TV':'▶ Start Chrome on the TV';
     var now=document.getElementById('now'),sub=document.getElementById('sub');
     if(!s.chrome){now.textContent='Chrome is not running on the TV';sub.textContent='';return;}
     if(s.error){now.textContent='TV tab busy';sub.textContent=s.error;return;}

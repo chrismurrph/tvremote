@@ -83,7 +83,9 @@ the same.
   phone page, which has no password, and by any program on that computer.
   Everyday browsing belongs in your normal Chrome.
 - Only one Chrome can run on the TV at a time. If another Chrome is open
-  there, the phone offers to close it before starting the remote's.
+  there, the remote takes over: the phone's Start button reads **Take over
+  the TV**, and it (or `bigscreen`) closes the other Chrome before starting
+  its own.
 - The phone wakes the TV computer's screen when you press a button. That
   works on GNOME; on other desktops, set the screen not to blank.
 - Everything stays on your network. The remote stores its state in

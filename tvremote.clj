@@ -1246,7 +1246,10 @@
         ;; one closed means it has stopped playing (Chris, 2026-10-07).
         "start"   (cond
                     (chrome-up?) {:ok true :note "already running"}
-                    (seq (other-chromes)) {:ok false :error "Close the other Chrome first"}
+                    ;; Pressing Start (or bigscreen) means "take over the TV": another
+                    ;; Chrome there is closed first, not left blocking (2026-10-10).
+                    (and (seq (other-chromes)) (not (:ok (close-other-chromes!))))
+                    {:ok false :error "Couldn't close the other Chrome"}
                     :else
                     (let [ok (launch-chrome!)]
                       (when ok (Thread/sleep 1500) (open-standard-tabs!))
