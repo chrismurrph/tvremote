@@ -1,15 +1,16 @@
 # tvremote
 
-Turn a spare computer plugged into your TV into a Netflix, YouTube and reading
-screen you drive from your phone's browser. No app to install, no casting:
-the phone opens a web page served by the TV computer, and that page controls
-a Chrome window on the TV.
+Use your phone as a remote for Netflix, YouTube and web pages on your TV. It
+runs on a spare computer plugged into the TV, and there's nothing to install on
+the phone: it opens a web page served by that computer, and the page controls a
+Chrome window on the TV. No casting, no app store.
 
 - **Netflix and YouTube**: browse, search, play, pause, skip, volume, full screen.
 - **Reading**: send any web page to the TV, scroll it, change the text size,
   follow its links (with breadcrumbs back), play the videos in it.
 - **Per person**: each phone says who's holding it, and the TV keeps each
   person's Recent list and place in every show, video and page.
+- **Easy to share**: the TV shows a QR code that gets the next phone the remote.
 
 ## What you need
 
@@ -21,21 +22,21 @@ a Chrome window on the TV.
 - **[Babashka](https://babashka.org)** (`bb`), the small program the remote runs
   on. `install.sh` installs it for you if it's missing (into `~/.local/bin`).
 - **A Netflix account** and/or a Google account for YouTube.
-- **Phones on the same Wi-Fi**, with Chrome.
+- **Phones on the same Wi-Fi**: Android or iPhone, with their usual browser.
 
 ## Install
 
 On the TV computer:
 
 ```bash
-git clone <this repo> ~/tvremote
+git clone https://github.com/chrismurrph/tvremote ~/tvremote
 cd ~/tvremote
 ./install.sh
 ```
 
 `install.sh` creates `config.edn` from `config.example.edn`, sets the remote up
 to start whenever you log in, and prints the address for your phone, such as
-`http://192.168.1.50:7700/`.
+`http://192.168.1.50:7700/` (and a QR code of it, if `qrencode` is installed).
 
 Then open `config.edn` and put your household's names in `:people`, for
 example `["Ann" "Bob"]`, and run `./install.sh` again to restart the remote.
@@ -52,13 +53,13 @@ Chrome you use on that computer. That's needed only once.
 
 To update later: `cd ~/tvremote && git pull && ./install.sh`.
 
-## Pair a phone
+## Get the remote onto a phone
 
-1. On the phone, open the address `install.sh` printed, **in the phone's own
-   browser** (see below). Easiest: on a phone that already has the remote,
-   press **Show a QR code on the TV** (under 📱 Share the remote), and scan the
-   TV with the new phone's camera. That opens the real browser, never an
-   app's built-in one.
+1. Open the remote's address on the phone **in its own browser** (see the next
+   section for why). Easiest: on a phone that already has the remote, open
+   **⋯ More** and press **Show a QR code on the TV**, then scan the TV with
+   the new phone's camera. A camera scan always opens the real browser. The
+   first phone can scan the QR code `install.sh` printed, or type the address.
 2. Pick your name. Each phone remembers it; tap the name at the top to change it.
 3. Put the remote on your home screen (next section). It's worth it: from
    then on the remote is one tap away, like an app.
@@ -96,13 +97,10 @@ Then:
 Pick your name again if the remote asks: each browser keeps its own copy, and
 the home-screen icon uses the browser you added it from.
 
-Already added it before the remote had its own icon (it showed a letter or a
-number)? Remove that shortcut and add it again.
-
 ## Send a page from your computer
 
-The phone page has a box for pasting a link, but you can also send one from any
-computer on the same Wi-Fi. That's handy for scripts, or for asking an AI coding
+The phone can open a link on the TV (under **⋯ More**), but you can also send
+one from any computer on the same Wi-Fi. That's handy for scripts, or for asking an AI coding
 agent to "put it on the TV". Copy `bigscreen` from this repo onto your `PATH`, set
 the address once, and run it:
 
@@ -138,8 +136,8 @@ the same.
 ## The other scripts
 
 `deploy.sh`, `rbb.sh` and `probe.sh` are for developing tvremote from another
-computer (copy it to the TV and restart it, or try code against the running
-remote). `deploy.env.example` says what they need. You don't need any of them
+computer (update the TV's copy from GitHub and restart it, or try code against
+the running remote). `deploy.env.example` says what they need. You don't need any of them
 to use the remote.
 
 `test/` holds checks that run on any computer, without a TV or Chrome: for
