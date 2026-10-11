@@ -1187,7 +1187,9 @@
   (when-let [u (:reading (load-state))]
     (let [r (http/put (str "http://127.0.0.1:" cdp-port "/json/new?"
                            (java.net.URLEncoder/encode u "UTF-8")) {:throw false})]
-      (save-page-id! (:id (json/parse-string (:body r) true)))))
+      (save-page-id! (:id (json/parse-string (:body r) true)))
+      ;; the reader's text size; in the background so Start isn't held up
+      (future (some-> (page-target) zoom-when-loaded!))))
   (when-let [n (first (filter (partial on-site? "netflix.com") (targets)))]
     (http/get (str "http://127.0.0.1:" cdp-port "/json/activate/" (:id n)) {:throw false})))
 
