@@ -1398,8 +1398,23 @@
     (reply {:people (:people config)})
     (handler-2 req)))
 
+(def home-screen-files
+  "What a phone fetches to put the remote on its home screen: name and icons."
+  {"/manifest.json"        ["manifest.json" "application/manifest+json"]
+   "/icon-192.png"         ["icons/icon-192.png" "image/png"]
+   "/icon-512.png"         ["icons/icon-512.png" "image/png"]
+   "/apple-touch-icon.png" ["icons/icon-180.png" "image/png"]})
+
+(defn handler-4
+  "handler-3, plus the home-screen files."
+  [req]
+  (if-let [[f ct] (home-screen-files (:uri req))]
+    {:status 200 :headers {"Content-Type" ct "Cache-Control" "max-age=86400"}
+     :body (io/file base-dir f)}
+    (handler-3 req)))
+
 (defn -main []
-  (server/run-server handler-3 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-4 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))
