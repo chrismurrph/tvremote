@@ -1318,7 +1318,8 @@
                     {:ok false :error "Couldn't close the other Chrome"}
                     :else
                     (let [ok (launch-chrome!)]
-                      (when ok (Thread/sleep 1500) (open-standard-tabs!))
+                      ;; Netflix is in front after a start, so it's current
+                      (when ok (Thread/sleep 1500) (open-standard-tabs!) (reset! service "nf"))
                       {:ok ok}))
         "home"    (do (navigate @t (str nf "/browse")) {:ok true})
         "play"    (do (try (record-watching-2!) (catch Exception _ nil))
