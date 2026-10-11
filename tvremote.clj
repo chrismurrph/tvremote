@@ -1408,13 +1408,29 @@ background:#141414;color:#eee;font:28px system-ui,sans-serif;text-align:center}
         "profile" (assoc (pick-profile (parse-long (:i q))) :ok true)
         {:ok false :error (str "unknown action " action)}))))
 
+(defn ensure-fullscreen!
+  "Put the TV's Chrome window back to full screen if it has dropped out:
+   leaving a video's full screen can leave the window normal, and there's no
+   keyboard at the TV to press F11 (Chris, 2026-10-11)."
+  []
+  (when-let [t (first (filter #(= "page" (:type %)) (targets)))]
+    (let [w (cdp t "Browser.getWindowForTarget")]
+      (when-not (= "fullscreen" (get-in w [:bounds :windowState]))
+        (cdp t "Browser.setWindowBounds" {:windowId (:windowId w) :bounds {:windowState "fullscreen"}})))))
+
 (defn handler [req]
   (let [uri (:uri req)]
     (try
       (cond
         (= uri "/") {:status 200 :headers {"Content-Type" "text/html; charset=utf-8"} :body @page}
         (= uri "/status") (reply (cond-> (status-2 (user-of (query req))) @share-id (assoc :sharing true)))
-        (str/starts-with? uri "/act/") (reply (act (subs uri 5) (query req)))
+        (str/starts-with? uri "/act/")
+        (let [action (subs uri 5)
+              r      (act action (query req))]
+          ;; after every press, so the window never stays out of full screen
+          (when-not (= "close-all" action)
+            (future (try (ensure-fullscreen!) (catch Exception _ nil))))
+          (reply r))
         :else {:status 404 :body "not found"})
       (catch Exception e
         (reply {:ok false :error (or (ex-message e) (str e))})))))
