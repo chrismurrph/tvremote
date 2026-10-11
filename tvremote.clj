@@ -891,6 +891,11 @@
   (let [st (load-state)]
     (or (get-in st [:watched-by user svc]) (get-in st [:watched svc]))))
 
+(defn watched-for-2
+  "What user last watched on svc (:nf or :yt), or nil: never someone else's."
+  [user svc]
+  (get-in (load-state) [:watched-by user svc]))
+
 (defn save-watched-by! [user svc m]
   (update-state! #(if user
                     (assoc-in % [:watched-by user svc] m)
@@ -1107,7 +1112,7 @@
       (try (record-watching-2!) (catch Exception _ nil))
       (pause-all)
       (case svc
-        "nf" (let [t (tv-target) w (watched-for user :nf)]
+        "nf" (let [t (tv-target) w (watched-for-2 user :nf)]
                (reset! service "nf")
                (cdp t "Page.bringToFront")
                (if (and w (not (and (str/includes? (:url t) "/watch/") (= user (get @owner "nf")))))
@@ -1116,7 +1121,7 @@
                      (load-nf! t w)
                      {:ok true :loaded (or (:title w) "the last episode")})
                  {:ok true}))
-        "yt" (let [t (yt-target) w (watched-for user :yt)]
+        "yt" (let [t (yt-target) w (watched-for-2 user :yt)]
                (reset! service "yt")
                (cdp t "Page.bringToFront")
                (if (and w (not (and (str/includes? (:url t) "/watch") (= user (get @owner "yt")))))
@@ -1278,7 +1283,7 @@
         "switch"     (let [r (switch-service-2! (:to q) (user-of q))]
                        ;; nothing of theirs to resume: the phone reads the titles instead
                        (cond-> r (and (:ok r) (not (:loaded r)) (#{"nf" "yt"} (:to q))
-                                      (nil? (watched-for (user-of q) (keyword (:to q)))))
+                                      (nil? (watched-for-2 (user-of q) (keyword (:to q)))))
                          (assoc :fresh true)))
         "page-video" {:ok (rv-play (re-find #"[\w-]{11}" (:id q)))}
         "open"       (do (set-owner! "page" (user-of q))
