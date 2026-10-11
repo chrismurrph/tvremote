@@ -1272,20 +1272,37 @@
   [q]
   (re-matches #"[a-z]{1,20}" (or (:u q) "")))
 
+(def repo-url "https://github.com/chrismurrph/tvremote")
+
 (defn share-html
-  "The page the TV shows for Share: a QR code of the remote's address (as the
-   phone sees it), for another phone's camera."
+  "The page the TV shows for Share: two QR codes for a phone's camera. One is
+   this TV's remote (addr, as the pressing phone saw it), with the names it
+   knows; the other is the project on GitHub, for someone's own TV."
   [addr]
-  (str "<!doctype html><html><head><meta charset=utf-8><title>Share the TV remote</title>
+  (let [ppl (seq (:people config))
+        esc #(str/escape (str %) {\< "&lt;" \> "&gt;" \& "&amp;" \' "&#39;" \" "&quot;"})]
+    (str "<!doctype html><html><head><meta charset=utf-8><title>Share the TV remote</title>
 <script src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'></script>
 <style>body{margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
-background:#141414;color:#eee;font:28px system-ui,sans-serif;text-align:center}
-#qr{background:#fff;padding:24px;border-radius:16px;margin:28px}small{color:#999;font-size:22px}</style></head>
-<body><div style='font-size:44px'>📱 Scan with your phone's camera</div>
-<div id=qr></div><div>http://" addr "/</div>
-<small>Then add it to your home screen. This goes away in 2 minutes.</small>
-<script>new QRCode(document.getElementById('qr'),{text:'http://" addr "/',width:420,height:420})</script>
-</body></html>"))
+background:#141414;color:#eee;font:24px/1.35 system-ui,sans-serif;text-align:center}
+.row{display:flex;gap:90px;align-items:flex-start}.col{width:440px}
+h1{font-size:40px;font-weight:600;margin:0 0 26px}h2{font-size:32px;margin:0 0 6px}
+.qr{display:inline-block;background:#fff;padding:18px;border-radius:14px;margin:14px 0}
+small{display:block;color:#999;font-size:20px}footer{color:#999;font-size:20px;margin-top:22px}</style></head>
+<body><h1>📱 Scan with your phone's camera</h1><div class=row>
+<div class=col><h2>Use this TV's remote</h2><small>On this home's Wi-Fi only</small>
+<div class=qr id=lan></div><div>http://" addr "/</div>"
+         (when ppl
+           (str "<small>Names on this TV: " (esc (str/join ", " ppl))
+                ". Not there? Ask whoever set the TV up to add your name.</small>"))
+         "</div>
+<div class=col><h2>Get tvremote for your own TV</h2><small>Free, on GitHub</small>
+<div class=qr id=gh></div><div>" (str/replace repo-url "https://" "") "</div>
+<small>Needs a spare computer plugged into the TV.</small></div></div>
+<footer>This goes away in 2 minutes.</footer>
+<script>new QRCode(document.getElementById('lan'),{text:'http://" addr "/',width:300,height:300});
+new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:300})</script>
+</body></html>")))
 
 (def share-id (atom nil))
 
