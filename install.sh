@@ -4,7 +4,15 @@
 set -e
 cd "$(dirname "$0")"
 dir=$(pwd)
-bb=$(command -v bb) || { echo "Babashka (bb) isn't installed - see https://babashka.org"; exit 1; }
+# Babashka runs the remote. If it's missing, fetch it with its own official
+# installer into ~/.local/bin (no sudo needed).
+bb=$(command -v bb || command -v ~/.local/bin/bb) || {
+  echo "Installing Babashka (bb), which the remote runs on, into ~/.local/bin ..."
+  command -v curl >/dev/null || { echo "Needs curl to fetch Babashka - install curl and run this again."; exit 1; }
+  mkdir -p ~/.local/bin
+  bash <(curl -fsSL https://raw.githubusercontent.com/babashka/babashka/master/install) --dir ~/.local/bin
+  bb=~/.local/bin/bb
+}
 [ -f config.edn ] || { cp config.example.edn config.edn; echo "Made config.edn from config.example.edn - edit it to add your names."; }
 mkdir -p ~/.config/systemd/user
 cat > ~/.config/systemd/user/tvremote.service <<UNIT
@@ -25,5 +33,5 @@ systemctl --user enable tvremote >/dev/null 2>&1
 systemctl --user restart tvremote
 sleep 2
 systemctl --user is-active tvremote >/dev/null || { echo "tvremote didn't start - see: journalctl --user -u tvremote"; exit 1; }
-port=$(bb -e "(:port (merge {:port 7700} (try (clojure.edn/read-string (slurp \"config.edn\")) (catch Exception _ {}))))")
+port=$("$bb" -e "(:port (merge {:port 7700} (try (clojure.edn/read-string (slurp \"config.edn\")) (catch Exception _ {}))))")
 echo "tvremote is running. On your phone (same Wi-Fi) open: http://$(hostname -I | awk '{print $1}'):$port/"

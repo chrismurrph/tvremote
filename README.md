@@ -18,7 +18,8 @@ a Chrome window on the TV.
   should log in automatically when switched on, since the remote starts at
   login.
 - **Google Chrome** on that computer, either the normal package or the Flatpak.
-- **[Babashka](https://babashka.org)** (`bb`) on that computer.
+- **[Babashka](https://babashka.org)** (`bb`), the small program the remote runs
+  on. `install.sh` installs it for you if it's missing (into `~/.local/bin`).
 - **A Netflix account** and/or a Google account for YouTube.
 - **Phones on the same Wi-Fi**, with Chrome.
 
