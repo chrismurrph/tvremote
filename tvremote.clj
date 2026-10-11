@@ -1271,6 +1271,19 @@ background:#141414;color:#eee;font:28px system-ui,sans-serif;text-align:center}
 
 (def share-id (atom nil))
 
+(defn share-off!
+  "Take the QR code down (only if it is still tab id, when given) and bring
+   back what was showing."
+  ([] (share-off! @share-id))
+  ([id]
+   (when (and id (= id @share-id))
+     (close-tab id)
+     (reset! share-id nil)
+     (some-> (case @service "nf" (tv-target) "yt" (yt-target) "page" (page-target)
+                   "rl" (rl-target) nil)
+             (cdp "Page.bringToFront")))
+   {:ok true}))
+
 (defn share!
   "Put the QR code for addr (host:port, from the phone) in front on the TV for
    two minutes, then close it and bring back what was showing."
@@ -1283,13 +1296,7 @@ background:#141414;color:#eee;font:28px system-ui,sans-serif;text-align:center}
           id (:id (json/parse-string (:body r) true))]
       (some-> @share-id close-tab)
       (reset! share-id id)
-      (future (Thread/sleep 120000)
-              (when (= id @share-id)
-                (close-tab id)
-                (reset! share-id nil)
-                (some-> (case @service "nf" (tv-target) "yt" (yt-target) "page" (page-target)
-                              "rl" (rl-target) nil)
-                        (cdp "Page.bringToFront"))))
+      (future (Thread/sleep 120000) (share-off! id))
       {:ok (boolean id)})))
 
 (defn act [action q]
@@ -1332,6 +1339,7 @@ background:#141414;color:#eee;font:28px system-ui,sans-serif;text-align:center}
         "resume"     (resume! (:svc q) (user-of q) (parse-long (:i q)))
         "tabs"       {:ok true :tabs (user-tabs)}
         "share"      (share! (:host q))
+        "share-off"  (share-off!)
         "tab"        {:ok (boolean (switch-tab-2 (:id q) (user-of q)))}
         "tab-close"  {:ok (close-tab (:id q))}
         "page-scroll" (if-let [p (reading-target)] {:ok (page-scroll p (:how q))} {:ok false :error "No page open for reading"})
@@ -1395,7 +1403,7 @@ background:#141414;color:#eee;font:28px system-ui,sans-serif;text-align:center}
     (try
       (cond
         (= uri "/") {:status 200 :headers {"Content-Type" "text/html; charset=utf-8"} :body @page}
-        (= uri "/status") (reply (status-2 (user-of (query req))))
+        (= uri "/status") (reply (cond-> (status-2 (user-of (query req))) @share-id (assoc :sharing true)))
         (str/starts-with? uri "/act/") (reply (act (subs uri 5) (query req)))
         :else {:status 404 :body "not found"})
       (catch Exception e

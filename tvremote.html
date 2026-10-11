@@ -124,7 +124,7 @@ button.red{background:var(--red);border-color:var(--red)}
 </div>
 
 <h2>📱 Share the remote</h2>
-<button style="width:100%" onclick="act(this,'share?host='+encodeURIComponent(location.host))">Show a QR code on the TV</button>
+<button id="sharebtn" style="width:100%" onclick="act(this,sharing?'share-off':'share?host='+encodeURIComponent(location.host))">Show a QR code on the TV</button>
 <p style="color:var(--soft);margin:6px 0 0">Someone else scans it with their phone's camera to get the remote.</p>
 
 <h2>🗂 Tabs on the TV</h2>
@@ -189,7 +189,7 @@ function workLabel(path){var a=path.split('?')[0];
   if(/^yt-(home|subs|history|search)$/.test(a))return 'Reading YouTube on the TV';
   return {profile:'Opening the profile',switch:'Switching the TV',resume:'Loading it on the TV',
     start:'Starting Chrome on the TV',play:'Starting it on the TV','yt-play':'Starting it on the TV',
-    'page-link':'Opening the link',share:'Putting the QR code on the TV',open:'Opening the page','page-video':'Starting the video'}[a]||'Working on the TV';}
+    'page-link':'Opening the link',share:'Putting the QR code on the TV','share-off':'Taking the QR code down',open:'Opening the page','page-video':'Starting the video'}[a]||'Working on the TV';}
 var workTimer=null;
 function working(path){var t0=Date.now(),el=document.getElementById('working'),label=workLabel(path);
   clearInterval(workTimer);
@@ -211,10 +211,12 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return
 function clock(ms){if(ms==null)return'';var s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor(s%3600/60);s=s%60;
   return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(s).padStart(2,'0');}
 
+var sharing=false; // the TV is showing Share's QR code (from /status, so every phone sees it)
 function poll(){
   fetch('/status?u='+encodeURIComponent(who||'')).then(function(r){return r.json()}).then(function(s){
     document.getElementById('startrow').style.display=s.chrome?'none':'block';
     chromeUp=!!s.chrome;document.body.classList.toggle('nochrome',!s.chrome);
+    sharing=!!s.sharing;document.getElementById('sharebtn').textContent=sharing?'Take the QR code down':'Show a QR code on the TV';
     // Start only once no other Chrome is open — the server refuses it too
     var sb=document.getElementById('startbtn'),other=(!s.chrome&&s.others>0);
     sb.textContent=other?'▶ Take over the TV':'▶ Start Chrome on the TV';
