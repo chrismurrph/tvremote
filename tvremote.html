@@ -65,9 +65,11 @@ button.red{background:var(--red);border-color:var(--red)}
 #who{padding:4px 12px;font-size:13px;border-radius:14px;color:var(--soft)}
 #whobox{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px}
 #whobox .profiles button{flex:1;font-weight:600}
+#working{position:fixed;top:0;left:0;right:0;z-index:10;background:#3a6ea5;color:#fff;font-weight:600;text-align:center;padding:10px 16px;display:none}
 </style>
 </head>
 <body>
+<div id="working"></div>
 <div id="whobox" style="display:none"><div style="margin-bottom:10px">Who uses this phone? The TV keeps each person's last show and place.</div>
 <div class="profiles" id="whobtns"></div></div>
 <div id="whorow"><span id="wake"></span><button id="who" onclick="askWho()">…</button></div>
@@ -168,14 +170,28 @@ function askWho(){document.getElementById('whobox').style.display='';}
 // and any other press is refused; a press that never answers frees them after 60s.
 var busy=0,busyTimer=null,chromeUp=true;
 function setBusy(d){busy=Math.max(0,busy+d);document.body.classList.toggle('busy',busy>0);
-  clearTimeout(busyTimer);if(busy)busyTimer=setTimeout(function(){busy=0;document.body.classList.remove('busy');},60000);}
+  clearTimeout(busyTimer);if(busy)busyTimer=setTimeout(function(){busy=0;document.body.classList.remove('busy');workDone();},60000);}
+// A press the TV takes a while over says so at the top of the screen, with
+// the seconds counting, so a slow Home doesn't look like nothing happening.
+function workLabel(path){var a=path.split('?')[0];
+  if(/^(browse|shows|movies|genre|search)$/.test(a))return 'Reading Netflix on the TV';
+  if(/^yt-(home|subs|history|search)$/.test(a))return 'Reading YouTube on the TV';
+  return {profile:'Opening the profile',switch:'Switching the TV',resume:'Loading it on the TV',
+    start:'Starting Chrome on the TV',play:'Starting it on the TV','yt-play':'Starting it on the TV',
+    'page-link':'Opening the link',open:'Opening the page','page-video':'Starting the video'}[a]||'Working on the TV';}
+var workTimer=null;
+function working(path){var t0=Date.now(),el=document.getElementById('working'),label=workLabel(path);
+  clearInterval(workTimer);
+  workTimer=setInterval(function(){var s=Math.round((Date.now()-t0)/1000);
+    if(Date.now()-t0>700){el.textContent='⏳ '+label+'… '+s+'s';el.style.display='block';}},250);}
+function workDone(){clearInterval(workTimer);document.getElementById('working').style.display='none';}
 function call(path){
   if(busy)return Promise.resolve({ok:false,error:'The TV is still busy with the last press'});
   if(!chromeUp&&!/^(start|close-all)\b/.test(path))return Promise.resolve({ok:false,error:'Chrome isn\'t running — press Start'});
-  setBusy(1);
+  setBusy(1);working(path);
   return fetch('/act/'+path+(path.indexOf('?')<0?'?':'&')+'u='+encodeURIComponent(who||''))
   .then(function(r){return r.json()})
-  .then(function(r){setBusy(-1);return r},function(e){setBusy(-1);throw e});}
+  .then(function(r){setBusy(-1);workDone();return r},function(e){setBusy(-1);workDone();throw e});}
 function act(b,path){flash(b,'busy');
   call(path).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok&&r.error)msg(r.error);setTimeout(poll,400);})
   .catch(function(e){flash(b,'fail',900);msg('No answer from the media machine: '+e);});}
