@@ -1296,7 +1296,7 @@ small{display:block;color:#999;font-size:20px}footer{color:#999;font-size:20px;m
            (str "<small>Names on this TV: " (esc (str/join ", " ppl))
                 ". Not there? Ask whoever set the TV up to add your name.</small>"))
          "</div>
-<div class=col><h2>Get tvremote for your own TV</h2><small>Free, on GitHub</small>
+<div class=col><h2>Get it for your own TV</h2><small>Free, on GitHub</small>
 <div class=qr id=gh></div><div>" (str/replace repo-url "https://" "") "</div>
 <small>Needs a spare computer plugged into the TV.</small></div></div>
 <footer>This goes away in 2 minutes.</footer>
