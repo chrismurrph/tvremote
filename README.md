@@ -55,7 +55,10 @@ To update later: `cd ~/tvremote && git pull && ./install.sh`.
 ## Pair a phone
 
 1. On the phone, open the address `install.sh` printed, **in the phone's own
-   browser** (see below).
+   browser** (see below). Easiest: on a phone that already has the remote,
+   press **Show a QR code on the TV** (under 📱 Share the remote), and scan the
+   TV with the new phone's camera. That opens the real browser, never an
+   app's built-in one.
 2. Pick your name. Each phone remembers it; tap the name at the top to change it.
 3. Put the remote on your home screen (next section). It's worth it: from
    then on the remote is one tap away, like an app.
