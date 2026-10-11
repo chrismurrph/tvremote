@@ -82,8 +82,9 @@ the same.
 - **The remote's Chrome belongs to the TV.** It runs dark, with a profile
   called "TV", so it isn't mistaken for anyone's own browser. Don't use it
   for everyday browsing: it can be driven by anyone on your Wi-Fi through the
-  phone page, which has no password, and by any program on that computer.
-  Everyday browsing belongs in your normal Chrome.
+  phone page, which has no password and will open any web address it is sent,
+  and by any program on that computer. Everyday browsing belongs in your
+  normal Chrome. Only run the remote on a home network you trust.
 - Only one Chrome can run on the TV at a time. If another Chrome is open
   there, the remote takes over: the phone's Start button reads **Take over
   the TV**, and it (or `bigscreen`) closes the other Chrome before starting
@@ -103,6 +104,10 @@ the same.
 computer (copy it to the TV and restart it, or try code against the running
 remote). `deploy.env.example` says what they need. You don't need any of them
 to use the remote.
+
+`test/` holds checks that run on any computer, without a TV or Chrome: for
+example `bb test/state_race.clj` checks that saves made at the same moment
+don't lose each other.
 
 ## License
 

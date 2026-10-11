@@ -61,7 +61,23 @@
 
 (defn load-state [] (try (read-string (slurp state-file)) (catch Exception _ {})))
 
-(defn save-reading! [url] (spit state-file (pr-str (assoc (load-state) :reading url))))
+(def state-lock (Object.))
+
+(defn update-state!
+  "The one way state.edn is changed: (f state), under a lock, written to a
+   temporary file and renamed over the old one. Two saves at once used to
+   lose one of them, and a save read mid-write by another could wipe the
+   whole file (falsifier, 2026-10-11). A file that exists but won't read
+   throws here rather than being overwritten with {}."
+  [f]
+  (locking state-lock
+    (let [st  (if (fs/exists? state-file) (read-string (slurp state-file)) {})
+          tmp (str state-file ".tmp")]
+      (spit tmp (pr-str (f st)))
+      (fs/move tmp state-file {:replace-existing true :atomic-move true})
+      nil)))
+
+(defn save-reading! [url] (update-state! #(assoc % :reading url)))
 
 ;; ---------------------------------------------------------------- CDP
 
@@ -258,6 +274,18 @@
    return [...t.children].map(c=>c.textContent.trim()).filter(Boolean).join(' · ')
           ||t.innerText.replace(/\\n+/g,' · ')})()")
 
+;; The show and episode from the player's own data, which is there whether or
+;; not the controls are showing: the title element above isn't, so an episode
+;; Netflix moved on to by itself went unrecorded (falsifier, 2026-10-11).
+(def nf-meta-js
+  (str "(()=>{try{const p=" player-js ";if(!p)return null;const mid=p.getMovieId();
+   const m=netflix.appContext.state.playerApp.getState().videoPlayer.videoMetadata[mid];
+   const v=m&&m._metadataObject&&m._metadataObject.video;if(!v||!v.title)return null;
+   const r={show:v.title,title:v.title,episode:null};
+   (v.seasons||[]).forEach(s=>(s.episodes||[]).forEach(e=>{if(e.id===mid||e.episodeId===mid){
+     r.episode='S'+s.seq+' E'+e.seq;r.title=v.title+' · E'+e.seq+(e.title?' · '+e.title:'')}}));
+   return r}catch(e){return null}})()"))
+
 (def status-js
   (str "const base={url:location.href,title:" nf-title-js "};
    let ep=null;try{const s=netflix.falcorCache.videos[p.getMovieId()].summary.value;
@@ -382,7 +410,7 @@
    remembers. Kept in state.edn, so a restarted server still knows the tab."
   (atom nil))
 
-(defn save-rv-id! [id] (reset! rv-id id) (spit state-file (pr-str (assoc (load-state) :rv-id id))))
+(defn save-rv-id! [id] (reset! rv-id id) (update-state! #(assoc % :rv-id id)))
 
 (defn main-yt?
   "A YouTube tab that isn't the reading-video one."
@@ -523,24 +551,25 @@
 ;; remote only scripts the tab it opened itself, found by its id — never some
 ;; other page that happens to be in the window.
 
-(def page-id "The reading tab's target id." (atom nil))
+(def page-id
+  "The reading tab's target id. Kept in state.edn, so a restarted server still
+   knows the tab even after its address has changed (a post that forwards)."
+  (atom nil))
+
+(defn save-page-id! [id]
+  (when (not= id @page-id) (reset! page-id id) (update-state! #(assoc % :page-id id))))
 
 (defn page-target
-  "The reading tab: by remembered id, else (after a restart) the tab showing the
-   last page read, else any open web page that isn't Netflix, YouTube or a
-   link from Reading — it then becomes the reading tab again. The last step
-   matters when the page's address changed (a renamed post that forwards)."
+  "The reading tab: by remembered id, else the tab showing the last page read,
+   which then becomes the reading tab again. Never just any open page: the
+   remote would run script on it every 15s, and on a Google sign-in page that
+   once got the sign-in revoked (falsifier, 2026-10-11)."
   []
   (let [ts (targets)
-        adopt (fn [t] (when t (reset! page-id (:id t)) t))]
+        adopt (fn [t] (when t (save-page-id! (:id t)) t))]
     (or (when-let [id @page-id] (first (filter #(= id (:id %)) ts)))
         (when-let [u (:reading (load-state))]
-          (adopt (first (filter #(and (= "page" (:type %)) (str/starts-with? (str/replace (:url %) "://www." "://") (str/replace u "://www." "://"))) ts))))
-        (let [st (load-state)]
-          (adopt (first (filter #(and (= "page" (:type %)) (re-find #"^https?://" (:url %))
-                                      (not (re-find #"//[^/]*(netflix|youtube)\.com" (:url %)))
-                                      (not (#{(:rv-id st) (:rl-id st)} (:id %))))
-                                ts)))))))
+          (adopt (first (filter #(and (= "page" (:type %)) (str/starts-with? (str/replace (:url %) "://www." "://") (str/replace u "://www." "://"))) ts)))))))
 
 (defn open-page
   "Open url as a new tab in front, and make it the reading tab."
@@ -550,7 +579,7 @@
         t (json/parse-string (:body r) true)]
     (pause-youtube!)
     (nf-pause)
-    (reset! page-id (:id t))
+    (save-page-id! (:id t))
     (reset! service "page")
     (save-reading! url)
     (http/get (str "http://127.0.0.1:" cdp-port "/json/activate/" (:id t)) {:throw false})
@@ -614,9 +643,9 @@
                  (if (= how "reset") 0.0 (tenth (min (- 3.0 base) (max (- 0.5 base) (+ adj step))))))
         z    (tenth (min 3.0 (max 0.5 (+ base (if link? adj 0.0)))))]
     (when (not= how "keep")
-      (spit state-file (pr-str (if link?
-                                 (assoc-in (load-state) [:zoom-adj user host] adj)
-                                 (assoc-in (load-state) [:zoom user] base)))))
+      (update-state! #(if link?
+                        (assoc-in % [:zoom-adj user host] adj)
+                        (assoc-in % [:zoom user] base))))
     (js t (str "document.documentElement.style.zoom='" z "';true"))
     (cond-> {:zoom z} link? (assoc :adj adj))))
 
@@ -647,7 +676,7 @@
   "The reading-link tab's target id. Kept in state.edn, like rv-id."
   (atom nil))
 
-(defn save-rl-id! [id] (reset! rl-id id) (spit state-file (pr-str (assoc (load-state) :rl-id id))))
+(defn save-rl-id! [id] (reset! rl-id id) (update-state! #(assoc % :rl-id id)))
 
 (defn rl-target []
   (when-let [id @rl-id] (first (filter #(= id (:id %)) (targets)))))
@@ -720,7 +749,9 @@
                      (assoc (yt-do t yt-status-js) :chrome true :service "yt")
                      {:chrome true :service "yt" :away true})
       :else (if-let [t (tab "netflix.com")]
-              (assoc (player-do t status-js) :chrome true :service "nf" :picked @picked)
+              (let [m (try (js t nf-meta-js) (catch Exception _ nil))]
+                (cond-> (assoc (player-do t status-js) :chrome true :service "nf" :picked @picked)
+                  m (assoc :title (:title m) :episode (:episode m))))
               {:chrome true :service "nf" :away true})))))
 
 ;; status, plus a link from Reading — read from Chrome's target list only.
@@ -761,7 +792,7 @@
   (nf-pause))
 
 (defn save-watched! [svc m]
-  (spit state-file (pr-str (assoc-in (load-state) [:watched svc] m))))
+  (update-state! #(assoc-in % [:watched svc] m)))
 
 (def last-saved "What record-watching! last wrote, per service." (atom {}))
 
@@ -823,7 +854,7 @@
 (defn set-owner! [svc user]
   (when (and user (#{"nf" "yt" "page"} svc) (not= user (get @owner svc)))
     (swap! owner assoc svc user)
-    (spit state-file (pr-str (assoc (load-state) :owner @owner)))))
+    (update-state! #(assoc % :owner @owner))))
 
 (defn watched-for
   "What user last watched on svc (:nf or :yt); the shared record until they have one."
@@ -832,9 +863,9 @@
     (or (get-in st [:watched-by user svc]) (get-in st [:watched svc]))))
 
 (defn save-watched-by! [user svc m]
-  (spit state-file (pr-str (if user
-                             (assoc-in (load-state) [:watched-by user svc] m)
-                             (assoc-in (load-state) [:watched svc] m)))))
+  (update-state! #(if user
+                    (assoc-in % [:watched-by user svc] m)
+                    (assoc-in % [:watched svc] m))))
 
 (def last-saved-2 "What record-watching-2! last wrote, per [user svc]." (atom {}))
 
@@ -845,14 +876,13 @@
 
 (defn add-history! [user svc m]
   (when user
-    (let [st (load-state)]
-      (spit state-file
-            (pr-str (assoc-in st [:history user svc]
-                              (->> (get-in st [:history user svc])
-                                   (remove #(= (:key m) (:key %)))
-                                   (cons m)
-                                   (take 100)
-                                   vec)))))))
+    (update-state!
+     (fn [st] (assoc-in st [:history user svc]
+                        (->> (get-in st [:history user svc])
+                             (remove #(= (:key m) (:key %)))
+                             (cons m)
+                             (take 100)
+                             vec))))))
 
 ;; Opened (2026-10-10): what each person opened from their phone, per service
 ;; — {"yt" {:user "ann" :key "<video id>"} ...}, kept in state.edn :opened.
@@ -869,7 +899,7 @@
 (defn set-opened! [svc user key]
   (when user
     (swap! opened assoc svc {:user user :key key})
-    (spit state-file (pr-str (assoc (load-state) :opened @opened)))))
+    (update-state! #(assoc % :opened @opened))))
 
 (defn claim
   "The person to save svc's current item (key) for, or nil if no phone opened it."
@@ -890,7 +920,9 @@
     (when-let [n (first (filter (partial on-site? "netflix.com") ts))]
       (when-let [u (re-find #"https://www\.netflix\.com/watch/\d+" (:url n))]
         (let [s     (player-do n status-js)
-              show  (some-> (:title s) (str/split #" · ") first)
+              meta  (try (js n nf-meta-js) (catch Exception _ nil))
+              s     (cond-> s meta (assoc :title (:title meta) :episode (or (:episode meta) (:episode s))))
+              show  (or (:show meta) (some-> (:title s) (str/split #" · ") first))
               o     (get @opened "nf")
               prev  (get @last-saved-2 [(:user o) :nf])
               ;; the show decides whose it is; with no title showing, the same
@@ -904,7 +936,7 @@
                          (and sec (>= (abs (- sec (:time-s prev 0))) 15))))
             (let [m {:url u :title title :time-s sec}]
               (save-watched-by! user :nf m)
-              (add-history! user :nf (assoc m :key (or (some-> title (str/split #" · ") first) u)
+              (add-history! user :nf (assoc m :key (or show (some-> title (str/split #" · ") first) u)
                                               :episode (:episode s)))
               (swap! last-saved-2 assoc [user :nf] m))))))
     (when-let [y (first (filter main-yt? ts))]
@@ -1024,7 +1056,9 @@
   (if (or (nil? user) (not (#{"nf" "yt"} svc)))
     (do (when (and user (= "page" svc))
           (try (record-watching-2!) (catch Exception _ nil))
-          (set-owner! "page" user))
+          (set-owner! "page" user)
+          ;; and theirs to save: the place goes to whoever is reading now
+          (when (page-target) (set-opened! "page" user nil)))
         (let [w (and user (= "page" svc) (nil? (page-target))
                      (first (get-in (load-state) [:history user :page])))]
           (if w
@@ -1071,7 +1105,7 @@
                    (reset! service "yt") (cdp t "Page.bringToFront") (load-yt! t w))
           "page" (do (when (:zoom w)
                        ;; the page's own size becomes the reader's base again
-                       (spit state-file (pr-str (assoc-in (load-state) [:zoom user] (:zoom w)))))
+                       (update-state! #(assoc-in % [:zoom user] (:zoom w))))
                      (load-page! (:url w) (:scroll w))))
         {:ok true :loaded (or (:title w) "it")})
     {:ok false :error "That's no longer in the list"}))
@@ -1099,7 +1133,7 @@
           (on-site? "netflix.com" t) (:ok (switch-service! "nf"))
           (on-site? "youtube.com" t) (:ok (switch-service! "yt"))
           :else (do (pause-all)
-                    (reset! page-id id) (reset! service "page") (save-reading! (:url t))
+                    (save-page-id! id) (reset! service "page") (save-reading! (:url t))
                     (= 200 (:status (http/get (str "http://127.0.0.1:" cdp-port "/json/activate/" id) {:throw false})))))))
 
 (defn switch-tab-2
@@ -1122,12 +1156,12 @@
   (when-let [u (:reading (load-state))]
     (let [r (http/put (str "http://127.0.0.1:" cdp-port "/json/new?"
                            (java.net.URLEncoder/encode u "UTF-8")) {:throw false})]
-      (reset! page-id (:id (json/parse-string (:body r) true)))))
+      (save-page-id! (:id (json/parse-string (:body r) true)))))
   (when-let [n (first (filter (partial on-site? "netflix.com") (targets)))]
     (http/get (str "http://127.0.0.1:" cdp-port "/json/activate/" (:id n)) {:throw false})))
 
 (defn close-tab [id]
-  (when (= id @page-id) (reset! page-id nil))
+  (when (= id @page-id) (save-page-id! nil))
   (when (= id @rv-id) (save-rv-id! nil))
   (= 200 (:status (http/get (str "http://127.0.0.1:" cdp-port "/json/close/" id) {:throw false}))))
 
@@ -1181,7 +1215,8 @@
   (wake-screen!)
   (if (and (not (chrome-up?)) (not (#{"start" "close-all"} action)))
     {:ok false :error "Chrome isn't running — press Start"}
-    (let [t (tv-target)]
+    ;; looked up only when used: finding it opens a Netflix tab if there's none
+    (let [t (delay (tv-target))]
       (nf-mark action)
       (case action
         ("toggle" "seek" "volume" "skip" "full")
@@ -1193,11 +1228,11 @@
                               {:ok false :error "The reading video's tab is gone — play it again from the page"})
           :else
           (case action
-            "toggle"  {:ok (toggle t)}
-            "seek"    {:ok (seek t (parse-long (:ms q)))}
-            "volume"  {:ok (volume t (parse-double (:d q)))}
-            "skip"    (if (skip t) {:ok true} {:ok false :error "Nothing to skip right now"})
-            "full"    (do (press t "f") {:ok true})))
+            "toggle"  {:ok (toggle @t)}
+            "seek"    {:ok (seek @t (parse-long (:ms q)))}
+            "volume"  {:ok (volume @t (parse-double (:d q)))}
+            "skip"    (if (skip @t) {:ok true} {:ok false :error "Nothing to skip right now"})
+            "full"    (do (press @t "f") {:ok true})))
         "close-all"  (if (chrome-up?)
                        {:ok false :error "Only while the remote's Chrome is closed"}
                        (close-other-chromes!))
@@ -1252,21 +1287,14 @@
                     {:ok false :error "Couldn't close the other Chrome"}
                     :else
                     (let [ok (launch-chrome!)]
-                      (when ok (Thread/sleep 1500) (open-standard-tabs!)
-                        ;; Chrome reopens YouTube behind Netflix on the last
-                        ;; video, which then plays unseen. Send it home instead:
-                        ;; pressing YouTube reloads the person's own saved place
-                        ;; anyway (2026-10-10).
-                        (doseq [y (filter main-yt? (targets))
-                                :when (str/includes? (:url y) "/watch")]
-                          (try (cdp y "Page.navigate" {:url (str yt "/")}) (catch Exception _ nil))))
+                      (when ok (Thread/sleep 1500) (open-standard-tabs!))
                       {:ok ok}))
-        "home"    (do (navigate t (str nf "/browse")) {:ok true})
+        "home"    (do (navigate @t (str nf "/browse")) {:ok true})
         "play"    (do (try (record-watching-2!) (catch Exception _ nil))
                     (set-owner! "nf" (user-of q))
                     (set-opened! "nf" (user-of q) nil)
                     (reset! picked (:t q))
-                    (navigate t (str nf "/watch/" (re-find #"\d+" (:id q)))) {:ok true})
+                    (navigate @t (str nf "/watch/" (re-find #"\d+" (:id q)))) {:ok true})
         "browse"  (assoc (browse (str nf "/browse")) :ok true)
         "shows"   (assoc (browse (str nf "/browse/genre/83")) :ok true)
         "movies"  (assoc (browse (str nf "/browse/genre/34399")) :ok true)
@@ -1296,7 +1324,7 @@
           (= (:id t) @rl-id) (reset! service "rl")
           (on-site? "netflix.com" t) (reset! service "nf")
           (on-site? "youtube.com" t) (reset! service "yt")
-          :else (do (reset! page-id (:id t)) (reset! service "page")))))
+          (= (:id t) @page-id) (reset! service "page"))))
 
 (defn handler-2
   "handler, logging every button press to the journal: who, what, how long,
@@ -1333,6 +1361,7 @@
   (reset! opened (:opened (load-state) {}))
   (reset! rv-id (:rv-id (load-state)))
   (reset! rl-id (:rl-id (load-state)))
+  (reset! page-id (:page-id (load-state)))
   (try (adopt-front-tab!) (catch Exception e (println "adopt-front-tab:" (ex-message e))))
   (future (loop []
             (Thread/sleep 15000)
