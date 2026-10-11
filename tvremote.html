@@ -187,6 +187,7 @@ function poll(){
     if(s.page)document.getElementById('pgtitle').textContent=s.page.title||s.page.url;
     renderCrumbs(s);
     renderRecent(s,v);
+    renderProfiles(s);
     if(s.zoom)document.getElementById('zoomval').textContent=zoomText(s);
     if(s.service==='rl'){now.textContent='🔗 Level '+(level(s)||'?')+(s.link&&s.link.title?' — '+s.link.title:'');sub.textContent='Tap 📖 or a number to go back';return;}
     if(s.service==='page'){now.textContent='📖 Reading'+(s.page&&s.page.title?' — '+s.page.title:'');sub.textContent='';return;}
@@ -286,6 +287,13 @@ function resume(b,i){flash(b,'busy');msg('Loading on the TV…');switching=true;
   call('resume?svc='+recentSvc+'&i='+i).then(function(r){switching=false;flash(b,r.ok?'done':'fail',900);
     msg(r.ok?('Loaded '+r.loaded+(recentSvc==='page'?'':' — paused, ready to play')):r.error);setTimeout(poll,400);})
   .catch(function(e){switching=false;flash(b,'fail',900);msg('No answer: '+e);});}
+// Netflix's "Who's watching?" on the TV by itself: show its names here too.
+// Drawn once per change, and cleared when it goes, unless titles replaced it.
+var profKey='';
+function renderProfiles(s){var p=(s.service==='nf'&&s.profiles&&s.profiles.length)?s.profiles:null;
+  var key=p?JSON.stringify(p):'';if(key===profKey)return;profKey=key;
+  var out=document.getElementById('results');
+  if(p)render({kind:'profiles',profiles:p});else if(out.querySelector('.profiles'))out.innerHTML='';}
 function crumb(b,id){flash(b,'busy');
   call('crumb?id='+id).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok)msg(r.error);setTimeout(poll,800);})
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}

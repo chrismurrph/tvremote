@@ -767,9 +767,14 @@
                      (assoc (yt-do t yt-status-js) :chrome true :service "yt")
                      {:chrome true :service "yt" :away true})
       :else (if-let [t (tab "netflix.com")]
-              (let [m (try (js t nf-meta-js) (catch Exception _ nil))]
+              (let [m  (try (js t nf-meta-js) (catch Exception _ nil))
+                    ;; "Who's watching?" showing by itself (after Start, say):
+                    ;; its names go to the phone without a press of Home
+                    ps (when-not (str/includes? (:url t) "/watch")
+                         (try (seq (js t profiles-js)) (catch Exception _ nil)))]
                 (cond-> (assoc (player-do t status-js) :chrome true :service "nf" :picked @picked)
-                  m (assoc :title (:title m) :episode (:episode m))))
+                  m  (assoc :title (:title m) :episode (:episode m))
+                  ps (assoc :profiles (vec ps))))
               {:chrome true :service "nf" :away true})))))
 
 ;; status, plus a link from Reading — read from Chrome's target list only.
