@@ -694,6 +694,12 @@
      out.push({url:u,jump:jump,text:(a.textContent.trim().replace(/\\s+/g,' ')||a.title||u).slice(0,120)})});
    return out})()")
 
+(def page-links-js-2
+  "page-links-js without the site's own furniture: links in a header, nav or
+   footer (and quickblog's site-header, page-link and tag links)."
+  (str/replace page-links-js "if(!/^https?:/"
+               "if(a.closest('header,nav,footer,[role=navigation],.site-header,.site-nav,.page-link,.tag'))return;\n     if(!/^https?:/"))
+
 (defn save-rl-id! [id] (reset! rl-id id) (update-state! #(assoc % :rl-id id)))
 
 (defn rl-target []
@@ -1293,7 +1299,7 @@
                               {:ok true})
                           {:ok false :error "No page open for reading"})
         "page-zoom"  (if-let [p (reading-target)] (assoc (set-zoom-2 p (:how q) (or (user-of q) (get @owner "page")) (= (:id p) @rl-id)) :ok true) {:ok false :error "No page open for reading"})
-        "page-links" (if-let [p (reading-target)] {:ok true :links (js p page-links-js)} {:ok false :error "No page open for reading"})
+        "page-links" (if-let [p (reading-target)] {:ok true :links (js p page-links-js-2)} {:ok false :error "No page open for reading"})
         "page-link"  (do (set-owner! "page" (user-of q))
                          (let [ok (rl-open (:url q))]
                            (when ok (some-> (rl-target) zoom-when-loaded!))
