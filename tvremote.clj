@@ -1275,7 +1275,11 @@
         "close-all"  (if (chrome-up?)
                        {:ok false :error "Only while the remote's Chrome is closed"}
                        (close-other-chromes!))
-        "switch"     (switch-service-2! (:to q) (user-of q))
+        "switch"     (let [r (switch-service-2! (:to q) (user-of q))]
+                       ;; nothing of theirs to resume: the phone reads the titles instead
+                       (cond-> r (and (:ok r) (not (:loaded r)) (#{"nf" "yt"} (:to q))
+                                      (nil? (watched-for (user-of q) (keyword (:to q)))))
+                         (assoc :fresh true)))
         "page-video" {:ok (rv-play (re-find #"[\w-]{11}" (:id q)))}
         "open"       (do (set-owner! "page" (user-of q))
                          ;; bigscreen sends no user: the page is the current reader's
