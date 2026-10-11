@@ -75,6 +75,9 @@ button.red{background:var(--red);border-color:var(--red)}
 #who{padding:4px 12px;font-size:13px;border-radius:14px;color:var(--soft)}
 #whobox{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px}
 #whobox .profiles button{flex:1;font-weight:600}
+/* the rarely used things, folded away above search so results stay last */
+#more{margin-top:22px}#more summary{list-style:none;cursor:pointer;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--soft);font-weight:600}
+#more summary::-webkit-details-marker{display:none}#more[open] summary{color:var(--fg)}
 #working{position:fixed;top:0;left:0;right:0;z-index:10;background:#3a6ea5;color:#fff;font-weight:600;text-align:center;padding:10px 16px;display:none}
 </style>
 </head>
@@ -127,6 +130,8 @@ button.red{background:var(--red);border-color:var(--red)}
 <div id="pgvideos"></div>
 </div>
 
+<details id="more">
+<summary>⋯ More: share the remote, tabs, open a link</summary>
 <h2>📱 Share the remote</h2>
 <button id="sharebtn" style="width:100%" onclick="act(this,sharing?'share-off':'share?host='+encodeURIComponent(location.host))">Show a QR code on the TV</button>
 <p style="color:var(--soft);margin:6px 0 0">Someone else scans it with their phone's camera to get the remote.</p>
@@ -134,6 +139,13 @@ button.red{background:var(--red);border-color:var(--red)}
 <h2>🗂 Tabs on the TV</h2>
 <button style="width:100%" onclick="tabs(this)">Show tabs</button>
 <div id="tablist"></div>
+
+<h2>Open a link on the TV</h2>
+<div id="openbox" style="display:flex;gap:8px">
+  <input id="link" type="url" placeholder="https://…" enterkeyhint="go" style="flex:1;font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:12px" onkeydown="if(event.key==='Enter')openLink(document.getElementById('openbtn'))">
+  <button id="openbtn" onclick="openLink(this)">Open</button>
+</div>
+</details>
 
 <div id="find">
 <div id="searchbox">
@@ -155,11 +167,6 @@ button.red{background:var(--red);border-color:var(--red)}
 <div id="results"></div>
 </div>
 
-<h2>Open a link on the TV</h2>
-<div id="openbox" style="display:flex;gap:8px">
-  <input id="link" type="url" placeholder="https://…" enterkeyhint="go" style="flex:1;font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:12px" onkeydown="if(event.key==='Enter')openLink(document.getElementById('openbtn'))">
-  <button id="openbtn" onclick="openLink(this)">Open</button>
-</div>
 
 <script>
 function flash(b,cls,ms){b.classList.remove('busy','done','fail');b.classList.add(cls);
