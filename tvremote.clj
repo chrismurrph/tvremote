@@ -1093,19 +1093,18 @@
    watched unless it is already on a watch page that user started. The tab's
    previous owner's place is saved first, and user becomes the owner of what
    gets loaded. Netflix is also sent to the saved second. Switching to Reading
-   makes the page user's."
+   leaves an open page with whoever opened it; with none open, user's latest
+   Recent page is reopened as theirs."
   [svc user]
   (if (or (nil? user) (not (#{"nf" "yt"} svc)))
     (do (when (and user (= "page" svc))
-          (try (record-watching-2!) (catch Exception _ nil))
-          (set-owner! "page" user)
-          ;; and theirs to save: the place goes to whoever is reading now
-          (when (page-target) (set-opened! "page" user nil)))
+          (try (record-watching-2!) (catch Exception _ nil)))
         (let [w (and user (= "page" svc) (nil? (page-target))
                      (first (get-in (load-state) [:history user :page])))]
           (if w
             ;; nothing open for reading: reopen the latest Recent page
-            (do (set-opened! "page" user nil)
+            (do (set-owner! "page" user)
+                (set-opened! "page" user nil)
                 (load-page! (:url w) (:scroll w)) {:ok true :loaded (or (:title w) (:url w))})
             (switch-service! svc))))
     (do
