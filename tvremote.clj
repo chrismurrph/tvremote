@@ -141,9 +141,25 @@
          (:result m))
        (finally (try (ws/close! sock) (catch Exception _)))))))
 
+(def sign-in-hosts
+  "Google's sign-in pages. Script run on one once got the TV's sign-in revoked,
+   so js refuses them, whichever way a tab got there (a link followed from
+   Reading, a redirect), falsifier 2026-10-11."
+  #{"accounts.google.com" "accounts.youtube.com"})
+
+(defn sign-in-page?
+  "Is tab t on a Google sign-in page right now? Asks Chrome, as t's own :url
+   can be from before a redirect."
+  [t]
+  (let [now (or (first (filter #(= (:id t) (:id %)) (targets))) t)]
+    (boolean (some #(on-site? % now) sign-in-hosts))))
+
 (defn js
-  "Evaluate expr in tab t (as a user gesture, so play() is allowed) and return its value."
+  "Evaluate expr in tab t (as a user gesture, so play() is allowed) and return
+   its value. Never on a Google sign-in page."
   [t expr]
+  (when (sign-in-page? t)
+    (throw (ex-info "The TV is on Google's sign-in page - the remote leaves it alone" {})))
   (let [r (cdp t "Runtime.evaluate" {:expression expr :returnByValue true
                                      :awaitPromise true :userGesture true})]
     (when-let [ex (:exceptionDetails r)]
@@ -559,6 +575,10 @@
 (defn save-page-id! [id]
   (when (not= id @page-id) (reset! page-id id) (update-state! #(assoc % :page-id id))))
 
+(def rl-id
+  "The reading-link tab's target id. Kept in state.edn, like rv-id."
+  (atom nil))
+
 (defn page-target
   "The reading tab: by remembered id, else the tab showing the last page read,
    which then becomes the reading tab again. Never just any open page: the
@@ -569,7 +589,9 @@
         adopt (fn [t] (when t (save-page-id! (:id t)) t))]
     (or (when-let [id @page-id] (first (filter #(= id (:id %)) ts)))
         (when-let [u (:reading (load-state))]
-          (adopt (first (filter #(and (= "page" (:type %)) (str/starts-with? (str/replace (:url %) "://www." "://") (str/replace u "://www." "://"))) ts)))))))
+          ;; never the link or video tab: a jump link's address starts with the page's
+          (adopt (first (filter #(and (= "page" (:type %)) (not (#{@rv-id @rl-id} (:id %)))
+                                      (str/starts-with? (str/replace (:url %) "://www." "://") (str/replace u "://www." "://"))) ts)))))))
 
 (defn open-page
   "Open url as a new tab in front, and make it the reading tab."
@@ -671,10 +693,6 @@
      seen.add(u);
      out.push({url:u,jump:jump,text:(a.textContent.trim().replace(/\\s+/g,' ')||a.title||u).slice(0,120)})});
    return out})()")
-
-(def rl-id
-  "The reading-link tab's target id. Kept in state.edn, like rv-id."
-  (atom nil))
 
 (defn save-rl-id! [id] (reset! rl-id id) (update-state! #(assoc % :rl-id id)))
 
@@ -912,6 +930,10 @@
   "(()=>{const h=document.documentElement.scrollHeight-innerHeight;
    return {url:location.href,title:document.title,scroll:h>0?scrollY/h:0}})()")
 
+(def nf-meta-missing
+  "Whether the log has been told Netflix's player data is missing (once a run)."
+  (atom false))
+
 (defn record-watching-2!
   "record-watching!, saved for each tab's owner, and with Netflix's second too
    (so two people in the same show each get their own place back)."
@@ -921,6 +943,10 @@
       (when-let [u (re-find #"https://www\.netflix\.com/watch/\d+" (:url n))]
         (let [s     (player-do n status-js)
               meta  (try (js n nf-meta-js) (catch Exception _ nil))
+              _     (if meta
+                      (reset! nf-meta-missing false)
+                      (when (and (:playing s) (compare-and-set! nf-meta-missing false true))
+                        (println "Netflix: no player data (nf-meta-js) while playing - has Netflix changed? Episodes Netflix moves on to won't be recorded until it's fixed.")))
               s     (cond-> s meta (assoc :title (:title meta) :episode (or (:episode meta) (:episode s))))
               show  (or (:show meta) (some-> (:title s) (str/split #" · ") first))
               o     (get @opened "nf")
