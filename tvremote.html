@@ -18,6 +18,8 @@ button{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(
 button:active{transform:scale(.96)}
 button:disabled{opacity:.4;cursor:default}
 /* greyed while the TV is busy with a press, or (all but Start) while Chrome is down */
+/* and everything but the names until the phone knows who holds it */
+body.nowho button:not(#whobtns button),body.nowho input:not(#whoname){opacity:.4;pointer-events:none}
 body.busy button:not(#who),body.nochrome button:not(#who):not(#startbtn):not(#closeall){opacity:.4;pointer-events:none}
 button.big{font-size:26px;padding:18px 6px}
 button.busy{background:#444}
@@ -154,7 +156,8 @@ function flash(b,cls,ms){b.classList.remove('busy','done','fail');b.classList.ad
 // every action as u=, so the TV saves and loads each person's own last watched.
 var who=null;try{who=localStorage.getItem('tvremote-who');}catch(e){}
 function showWho(){document.getElementById('who').textContent=who?('👤 '+who.charAt(0).toUpperCase()+who.slice(1)):'👤 Who?';
-  document.getElementById('whobox').style.display=who?'none':'';}
+  document.getElementById('whobox').style.display=who?'none':'';
+  document.body.classList.toggle('nowho',!who);}
 // The names come from the server's :people setting; with none set, the phone
 // asks for one. What's kept and sent is a plain lower-case form of the name.
 function slug(n){return String(n).toLowerCase().replace(/[^a-z]/g,'').slice(0,20);}
