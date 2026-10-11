@@ -17,6 +17,8 @@ h2{font-size:15px;color:var(--soft);font-weight:600;margin:22px 0 8px}
 button{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 6px;cursor:pointer;transition:background .15s,transform .08s}
 button:active{transform:scale(.96)}
 button:disabled{opacity:.4;cursor:default}
+/* greyed while the TV is busy with a press, or (all but Start) while Chrome is down */
+body.busy button:not(#who),body.nochrome button:not(#who):not(#startbtn):not(#closeall){opacity:.4;pointer-events:none}
 button.big{font-size:26px;padding:18px 6px}
 button.busy{background:#444}
 button.done{background:var(--ok)}
@@ -161,8 +163,19 @@ function loadPeople(){fetch('/config').then(function(r){return r.json()}).then(f
     '<input id="whoname" placeholder="Your name" style="flex:1;font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:12px">'+
     '<button onclick="setWho(document.getElementById(\'whoname\').value)">OK</button>';}).catch(function(){});}
 function askWho(){document.getElementById('whobox').style.display='';}
-function call(path){return fetch('/act/'+path+(path.indexOf('?')<0?'?':'&')+'u='+encodeURIComponent(who||''))
-  .then(function(r){return r.json()});}
+// One press at a time: two at once used to start two jobs on the same TV tab,
+// fighting each other. While one is out, the buttons are greyed (body.busy)
+// and any other press is refused; a press that never answers frees them after 60s.
+var busy=0,busyTimer=null,chromeUp=true;
+function setBusy(d){busy=Math.max(0,busy+d);document.body.classList.toggle('busy',busy>0);
+  clearTimeout(busyTimer);if(busy)busyTimer=setTimeout(function(){busy=0;document.body.classList.remove('busy');},60000);}
+function call(path){
+  if(busy)return Promise.resolve({ok:false,error:'The TV is still busy with the last press'});
+  if(!chromeUp&&!/^(start|close-all)\b/.test(path))return Promise.resolve({ok:false,error:'Chrome isn\'t running — press Start'});
+  setBusy(1);
+  return fetch('/act/'+path+(path.indexOf('?')<0?'?':'&')+'u='+encodeURIComponent(who||''))
+  .then(function(r){return r.json()})
+  .then(function(r){setBusy(-1);return r},function(e){setBusy(-1);throw e});}
 function act(b,path){flash(b,'busy');
   call(path).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok&&r.error)msg(r.error);setTimeout(poll,400);})
   .catch(function(e){flash(b,'fail',900);msg('No answer from the media machine: '+e);});}
@@ -174,6 +187,7 @@ function clock(ms){if(ms==null)return'';var s=Math.floor(ms/1000),h=Math.floor(s
 function poll(){
   fetch('/status?u='+encodeURIComponent(who||'')).then(function(r){return r.json()}).then(function(s){
     document.getElementById('startrow').style.display=s.chrome?'none':'block';
+    chromeUp=!!s.chrome;document.body.classList.toggle('nochrome',!s.chrome);
     // Start only once no other Chrome is open — the server refuses it too
     var sb=document.getElementById('startbtn'),other=(!s.chrome&&s.others>0);
     sb.textContent=other?'▶ Take over the TV':'▶ Start Chrome on the TV';
