@@ -700,6 +700,14 @@
   (str/replace page-links-js "if(!/^https?:/"
                "if(a.closest('header,nav,footer,[role=navigation],.site-header,.site-nav,.page-link,.tag'))return;\n     if(!/^https?:/"))
 
+(def page-links-js-3
+  "page-links-js-2, with a link that has no text of its own (an icon-only link
+   beside a heading, as GitHub and many doc sites have) labelled by its heading:
+   the heading it's in or next to, else the element it jumps to, else its
+   aria-label (2026-10-11)."
+  (str/replace page-links-js-2 "text:(a.textContent.trim().replace(/\\s+/g,' ')||a.title||u)"
+               "text:(a.textContent.trim().replace(/\\s+/g,' ')||(()=>{const H='h1,h2,h3,h4,h5,h6',h=a.closest(H)||(a.parentElement&&a.parentElement.querySelector(H)),t=parts[1]&&(document.getElementById(decodeURIComponent(parts[1]))||document.getElementById('user-content-'+decodeURIComponent(parts[1])));return ((h||t)?(h||t).textContent:'').trim().replace(/\\s+/g,' ')})()||(a.getAttribute('aria-label')||'').replace(/^Permalink:\\s*/,'')||a.title||u)"))
+
 (defn save-rl-id! [id] (reset! rl-id id) (update-state! #(assoc % :rl-id id)))
 
 (defn rl-target []
@@ -1364,7 +1372,7 @@ background:#141414;color:#eee;font:28px system-ui,sans-serif;text-align:center}
                               {:ok true})
                           {:ok false :error "No page open for reading"})
         "page-zoom"  (if-let [p (reading-target)] (assoc (set-zoom-2 p (:how q) (or (user-of q) (get @owner "page")) (= (:id p) @rl-id)) :ok true) {:ok false :error "No page open for reading"})
-        "page-links" (if-let [p (reading-target)] {:ok true :links (js p page-links-js-2)} {:ok false :error "No page open for reading"})
+        "page-links" (if-let [p (reading-target)] {:ok true :links (js p page-links-js-3)} {:ok false :error "No page open for reading"})
         "page-link"  (do (set-owner! "page" (user-of q))
                          (let [ok (rl-open (:url q))]
                            (when ok (some-> (rl-target) zoom-when-loaded!))
