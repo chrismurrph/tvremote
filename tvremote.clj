@@ -1254,6 +1254,44 @@
   [q]
   (re-matches #"[a-z]{1,20}" (or (:u q) "")))
 
+(defn share-html
+  "The page the TV shows for Share: a QR code of the remote's address (as the
+   phone sees it), for another phone's camera."
+  [addr]
+  (str "<!doctype html><html><head><meta charset=utf-8><title>Share the TV remote</title>
+<script src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'></script>
+<style>body{margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+background:#141414;color:#eee;font:28px system-ui,sans-serif;text-align:center}
+#qr{background:#fff;padding:24px;border-radius:16px;margin:28px}small{color:#999;font-size:22px}</style></head>
+<body><div style='font-size:44px'>📱 Scan with your phone's camera</div>
+<div id=qr></div><div>http://" addr "/</div>
+<small>Then add it to your home screen. This goes away in 2 minutes.</small>
+<script>new QRCode(document.getElementById('qr'),{text:'http://" addr "/',width:420,height:420})</script>
+</body></html>"))
+
+(def share-id (atom nil))
+
+(defn share!
+  "Put the QR code for addr (host:port, from the phone) in front on the TV for
+   two minutes, then close it and bring back what was showing."
+  [addr]
+  (if-not (re-matches #"[\w.\-]+(:\d+)?" (or addr ""))
+    {:ok false :error "Bad address"}
+    (let [r  (http/put (str "http://127.0.0.1:" cdp-port "/json/new?"
+                            (java.net.URLEncoder/encode (str "http://127.0.0.1:" port "/share?a=" addr) "UTF-8"))
+                       {:throw false})
+          id (:id (json/parse-string (:body r) true))]
+      (some-> @share-id close-tab)
+      (reset! share-id id)
+      (future (Thread/sleep 120000)
+              (when (= id @share-id)
+                (close-tab id)
+                (reset! share-id nil)
+                (some-> (case @service "nf" (tv-target) "yt" (yt-target) "page" (page-target)
+                              "rl" (rl-target) nil)
+                        (cdp "Page.bringToFront"))))
+      {:ok (boolean id)})))
+
 (defn act [action q]
   (wake-screen!)
   (if (and (not (chrome-up?)) (not (#{"start" "close-all"} action)))
@@ -1293,6 +1331,7 @@
                            {:ok ok}))
         "resume"     (resume! (:svc q) (user-of q) (parse-long (:i q)))
         "tabs"       {:ok true :tabs (user-tabs)}
+        "share"      (share! (:host q))
         "tab"        {:ok (boolean (switch-tab-2 (:id q) (user-of q)))}
         "tab-close"  {:ok (close-tab (:id q))}
         "page-scroll" (if-let [p (reading-target)] {:ok (page-scroll p (:how q))} {:ok false :error "No page open for reading"})
@@ -1413,8 +1452,18 @@
      :body (io/file base-dir f)}
     (handler-3 req)))
 
+(defn handler-5
+  "handler-4, plus /share: the QR code page the TV shows for Share."
+  [req]
+  (if (= "/share" (:uri req))
+    (let [a (:a (query req))]
+      (if (re-matches #"[\w.\-]+(:\d+)?" (or a ""))
+        {:status 200 :headers {"Content-Type" "text/html; charset=utf-8"} :body (share-html a)}
+        {:status 400 :body "bad address"}))
+    (handler-4 req)))
+
 (defn -main []
-  (server/run-server handler-4 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-5 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))

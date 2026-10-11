@@ -123,6 +123,10 @@ button.red{background:var(--red);border-color:var(--red)}
 <div id="pgvideos"></div>
 </div>
 
+<h2>📱 Share the remote</h2>
+<button style="width:100%" onclick="act(this,'share?host='+encodeURIComponent(location.host))">Show a QR code on the TV</button>
+<p style="color:var(--soft);margin:6px 0 0">Someone else scans it with their phone's camera to get the remote.</p>
+
 <h2>🗂 Tabs on the TV</h2>
 <button style="width:100%" onclick="tabs(this)">Show tabs</button>
 <div id="tablist"></div>
@@ -185,7 +189,7 @@ function workLabel(path){var a=path.split('?')[0];
   if(/^yt-(home|subs|history|search)$/.test(a))return 'Reading YouTube on the TV';
   return {profile:'Opening the profile',switch:'Switching the TV',resume:'Loading it on the TV',
     start:'Starting Chrome on the TV',play:'Starting it on the TV','yt-play':'Starting it on the TV',
-    'page-link':'Opening the link',open:'Opening the page','page-video':'Starting the video'}[a]||'Working on the TV';}
+    'page-link':'Opening the link',share:'Putting the QR code on the TV',open:'Opening the page','page-video':'Starting the video'}[a]||'Working on the TV';}
 var workTimer=null;
 function working(path){var t0=Date.now(),el=document.getElementById('working'),label=workLabel(path);
   clearInterval(workTimer);

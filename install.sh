@@ -34,4 +34,8 @@ systemctl --user restart tvremote
 sleep 2
 systemctl --user is-active tvremote >/dev/null || { echo "tvremote didn't start - see: journalctl --user -u tvremote"; exit 1; }
 port=$("$bb" -e "(:port (merge {:port 7700} (try (clojure.edn/read-string (slurp \"config.edn\")) (catch Exception _ {}))))")
-echo "tvremote is running. On your phone (same Wi-Fi) open: http://$(hostname -I | awk '{print $1}'):$port/"
+url="http://$(hostname -I | awk '{print $1}'):$port/"
+echo "tvremote is running. On your phone (same Wi-Fi) open: $url"
+# a QR code for the phone's camera, when qrencode is installed
+command -v qrencode >/dev/null && { echo "or scan this with the phone's camera:"; qrencode -t ansiutf8 "$url"; }
+true
