@@ -714,8 +714,18 @@
     (pause-youtube!)
     (nf-pause)
     (reset! service "rl")
-    (if deeper?
+    (cond
+      ;; A jump within the page showing replaces its history entry rather than
+      ;; adding one, so it doesn't add a breadcrumb level.
+      (and deeper? (= (str/replace (:url cur) #"#.*" "") (str/replace url #"#.*" "")))
+      (do (cdp cur "Page.bringToFront")
+          (js cur (str "location.replace(" (json/generate-string url) ")"))
+          true)
+
+      deeper?
       (do (navigate cur url) true)
+
+      :else
       (let [_  (when cur (http/get (str "http://127.0.0.1:" cdp-port "/json/close/" (:id cur)) {:throw false}))
             r  (http/put (str "http://127.0.0.1:" cdp-port "/json/new?"
                               (java.net.URLEncoder/encode url "UTF-8")) {:throw false})

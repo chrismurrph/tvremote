@@ -297,15 +297,21 @@ function pageVideos(b){flash(b,'busy');
 // pressing Reading comes back to the page where it was.
 function pageLinks(b){flash(b,'busy');
   call('page-links').then(function(r){flash(b,r.ok?'done':'fail',900);
-    var box=document.getElementById('pgvideos');
     if(!r.ok){msg(r.error);return;}
-    if(!r.links.length){box.innerHTML='<p style="color:var(--soft)">No links on this page</p>';return;}
-    box.innerHTML=r.links.map(function(l){
-      return '<button class="link" data-u="'+esc(l.url)+'" onclick="openPageLink(this)">'+(l.jump?'↓ ':'')+esc(l.text)+'<small>'+(l.jump?'on this page · ':'')+esc(l.url)+'</small></button>'}).join('');})
+    renderLinks(r.links);})
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
+function renderLinks(links){var box=document.getElementById('pgvideos');
+  if(!links.length){box.innerHTML='<p class="nolinks" style="color:var(--soft)">No links on this page</p>';return;}
+  box.innerHTML=links.map(function(l){
+    return '<button class="link" data-u="'+esc(l.url)+'"'+(l.jump?' data-jump="1"':'')+' onclick="openPageLink(this)">'+(l.jump?'↓ ':'')+esc(l.text)+'<small>'+(l.jump?'on this page · ':'')+esc(l.url)+'</small></button>'}).join('');}
+// After a link or breadcrumb opens, a links list on show is replaced by the
+// new page's links (left alone if the videos are showing instead).
+function refreshLinks(){var box=document.getElementById('pgvideos');if(!box.querySelector('button.link,.nolinks'))return;
+  call('page-links').then(function(r){if(r.ok)renderLinks(r.links);}).catch(function(){});}
 function openPageLink(b){flash(b,'busy');
   call('page-link?url='+encodeURIComponent(b.dataset.u)).then(function(r){flash(b,r.ok?'done':'fail',1500);
-    msg(r.ok?'Opened on the TV — press Reading to go back to the page':r.error);setTimeout(poll,1000);})
+    msg(r.ok?'Opened on the TV — press Reading to go back to the page':r.error);setTimeout(poll,1000);
+    if(r.ok&&!b.dataset.jump)refreshLinks();})
   .catch(function(e){flash(b,'fail',1500);msg('No answer: '+e);});}
 // Breadcrumbs: 📖 is the page, 1..n the links followed from it (the TV's
 // link tab history). Redrawn only when they change, so a tap isn't lost.
@@ -339,7 +345,7 @@ function renderProfiles(s){var p=(s.service==='nf'&&s.profiles&&s.profiles.lengt
   var out=document.getElementById('results');
   if(p)render({kind:'profiles',profiles:p});else if(out.querySelector('.profiles'))out.innerHTML='';}
 function crumb(b,id){flash(b,'busy');
-  call('crumb?id='+id).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok)msg(r.error);setTimeout(poll,800);})
+  call('crumb?id='+id).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok)msg(r.error);else refreshLinks();setTimeout(poll,800);})
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
 function playVid(b,id){flash(b,'busy');
   call('page-video?id='+id).then(function(r){flash(b,r.ok?'done':'fail',1500);if(!r.ok)msg(r.error);setTimeout(poll,1500);})
