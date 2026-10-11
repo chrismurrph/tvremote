@@ -54,14 +54,47 @@ To update later: `cd ~/tvremote && git pull && ./install.sh`.
 
 ## Pair a phone
 
-1. On the phone, open the address `install.sh` printed.
+1. On the phone, open the address `install.sh` printed, **in the phone's own
+   browser** (see below).
 2. Pick your name. Each phone remembers it; tap the name at the top to change it.
-3. Add the page to your home screen (Chrome menu → **Add to Home screen**).
+3. Put the remote on your home screen (next section). It's worth it: from
+   then on the remote is one tap away, like an app.
 4. Optional, to stop the phone's screen going off while you use the remote:
    in Chrome open `chrome://flags`, search for **Insecure origins treated as
    secure**, enter the address (such as `http://192.168.1.50:7700`), set it to
    **Enabled**, and relaunch Chrome. The remote then says
    "☀ Screen stays on".
+
+## Put the remote on your home screen
+
+The remote is a web page, but once it's on your home screen it opens like an
+app: its own icon ("TV Remote", a TV with a red play button), full screen, no
+address bar.
+
+**First, make sure you're in the real browser.** If you opened the address
+from a link in Messenger, WhatsApp, Facebook, Instagram, Gmail or another app,
+it's showing in that app's own built-in browser. There, the home-screen option
+is missing, and the name you pick isn't remembered once you move to the real
+browser. Open the app's menu (usually ⋯ or ⋮) and choose **Open in Chrome**,
+**Open in browser** or **Open in Safari**. Or type the address into the
+browser yourself.
+
+Then:
+
+- **Android, Chrome:** the ⋮ menu at the top right → **Add to Home screen**
+  (in newer versions it may say **Install app**, or be under Add to Home
+  screen → **Install**).
+- **Android, Samsung Internet:** the ☰ menu at the bottom right → **Add page
+  to** → **Home screen**.
+- **iPhone, Safari:** the Share button (the square with the up arrow) →
+  **Add to Home Screen**. Chrome on iPhone has the same option under its
+  Share button, on iOS 16.4 or later.
+
+Pick your name again if the remote asks: each browser keeps its own copy, and
+the home-screen icon uses the browser you added it from.
+
+Already added it before the remote had its own icon (it showed a letter or a
+number)? Remove that shortcut and add it again.
 
 ## Send a page from your computer
 
