@@ -22,7 +22,8 @@ Chrome window on the TV. No casting, no app store.
 - **[Babashka](https://babashka.org)** (`bb`), the small program the remote runs
   on. `install.sh` installs it for you if it's missing (into `~/.local/bin`).
 - **A Netflix account** and/or a Google account for YouTube.
-- **Phones on the same Wi-Fi**: Android or iPhone, with their usual browser.
+- **Phones on the same Wi-Fi**: Android, with Chrome or Samsung Internet. iPhones
+  should work too, in Safari, but haven't been tried yet.
 
 ## Install
 
@@ -63,11 +64,12 @@ To update later: `cd ~/tvremote && git pull && ./install.sh`.
 2. Pick your name. Each phone remembers it; tap the name at the top to change it.
 3. Put the remote on your home screen (next section). It's worth it: from
    then on the remote is one tap away, like an app.
-4. Optional, to stop the phone's screen going off while you use the remote:
-   in Chrome open `chrome://flags`, search for **Insecure origins treated as
+4. Optional, Android with Chrome only, to stop the phone's screen going off
+   while you use the remote: in Chrome open `chrome://flags`, search for **Insecure origins treated as
    secure**, enter the address (such as `http://192.168.1.50:7700`), set it to
    **Enabled**, and relaunch Chrome. The remote then says
-   "☀ Screen stays on".
+   "☀ Screen stays on". There's no way to do this on an iPhone, so its
+   screen goes off as usual.
 
 ## Put the remote on your home screen
 
