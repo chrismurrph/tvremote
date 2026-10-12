@@ -21,4 +21,12 @@
  ;; The remote's own Chrome profile (Chrome won't allow remote control of
  ;; your normal one). nil means ~/.config/tvremote-chrome-profile, or for the
  ;; Flatpak ~/.var/app/com.google.Chrome/config/tvremote-profile.
- :profile-dir nil}
+ :profile-dir nil
+
+ ;; Lets a phone lock this computer's own keyboards, mice and touchpads, so
+ ;; pressing them does nothing (handy with small children). Off unless true.
+ ;; Needs a one-off: sudo usermod -aG input $USER, then log out and in.
+ ;; While locked the power button does nothing; typing :unlock-word (letters
+ ;; only) on the keyboard unlocks without a phone.
+ :input-lock false
+ :unlock-word "tvremote"}

@@ -99,6 +99,26 @@ Then:
 Pick your name again if the remote asks: each browser keeps its own copy, and
 the home-screen icon uses the browser you added it from.
 
+## Lock the TV computer's keyboard and mouse (optional)
+
+With small children around, the TV computer's own keyboard and mouse can undo
+what the phones set up: closing Chrome, changing the volume, putting the
+computer to sleep. With the lock, pressing them does nothing and only the
+phones work the TV.
+
+It's off unless you turn it on. Once, on the TV computer:
+
+```bash
+sudo usermod -aG input $USER     # lets the remote take hold of the keyboard and mouse
+```
+
+Log out and back in (or restart), set `:input-lock true` in `config.edn`, and
+run `./install.sh` again. **🔒 Lock them** then appears under **⋯ More** on the
+phone. While locked, the power button does nothing too (holding it down still
+forces the computer off). To unlock without a phone, type the `:unlock-word`
+from `config.edn` (`tvremote` unless you change it) on the keyboard. If the
+remote stops for any reason, the lock lifts by itself.
+
 ## Send a page from your computer
 
 The phone can open a link on the TV (under **⋯ More**), but you can also send

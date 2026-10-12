@@ -1272,6 +1272,70 @@
   [q]
   (re-matches #"[a-z]{1,20}" (or (:u q) "")))
 
+;; ---------------------------------------------------------------- input lock
+;; Optional (config :input-lock true): the phone can lock the TV computer's own
+;; keyboards, mice and touchpads, so a child's presses there do nothing.
+;; inputlock.py holds the devices while it runs; ending it unlocks. The power
+;; button is set to do nothing while locked (it used to suspend the machine).
+
+(def input-lock? (boolean (:input-lock config)))
+(def unlock-word (str/lower-case (or (:unlock-word config) "tvremote")))
+(def lock-proc (atom nil))
+(def lock-error (atom nil))
+
+(defn locked? [] (boolean (some-> @lock-proc :proc .isAlive)))
+
+(defn power-button
+  "The power button's action (GNOME), or set it to action."
+  ([] (try (str/replace (str/trim (:out (p/shell {:out :string :err :string}
+                                                  "gsettings" "get" "org.gnome.settings-daemon.plugins.power"
+                                                  "power-button-action"))) "'" "")
+           (catch Exception _ nil)))
+  ([action] (try (p/shell {:out :string :err :string} "gsettings" "set"
+                          "org.gnome.settings-daemon.plugins.power" "power-button-action" action)
+                 (catch Exception _ nil))))
+
+(defn- lock-ended!
+  "The lock is off: remember that, and give the power button back."
+  []
+  (update-state! #(dissoc % :input-locked))
+  (when-let [was (:power-button-was (load-state))]
+    (power-button was)
+    (update-state! #(dissoc % :power-button-was))))
+
+(defn lock-input! []
+  (when (and input-lock? (not (locked?)))
+    (reset! lock-error nil)
+    (let [pr (p/process {:out :string :err :string}
+                        "python3" (str base-dir "/inputlock.py") unlock-word)]
+      (reset! lock-proc pr)
+      (when-not (:power-button-was (load-state))
+        (when-let [was (power-button)]
+          (when (not= was "nothing")
+            (update-state! #(assoc % :power-button-was was)))))
+      (power-button "nothing")
+      (update-state! #(assoc % :input-locked true))
+      ;; it ends by itself when the word is typed, or fails without permission
+      (future (let [r @pr]
+                (when (identical? pr @lock-proc)
+                  (reset! lock-proc nil)
+                  (when (not= 0 (:exit r))
+                    (reset! lock-error (str/trim (str (:err r))))
+                    (println "input lock:" @lock-error))
+                  (lock-ended!))))
+      (Thread/sleep 500)
+      (if (locked?) {:ok true} {:ok false :error (or @lock-error "The lock didn't start")}))))
+
+(defn unlock-input! []
+  (when-let [pr @lock-proc]
+    (reset! lock-proc nil)
+    (p/destroy pr))
+  (lock-ended!)
+  {:ok true})
+
+(defn input-lock-status []
+  (when input-lock? {:locked (locked?) :error @lock-error}))
+
 (def repo-url "https://github.com/chrismurrph/tvremote")
 
 (defn share-html
@@ -1375,6 +1439,9 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         "tabs"       {:ok true :tabs (user-tabs)}
         "share"      (share! (:host q))
         "share-off"  (share-off!)
+        "input-lock" (cond (not input-lock?) {:ok false :error "The lock is off in config.edn (:input-lock)"}
+                           (= "1" (:on q)) (lock-input!)
+                           :else (unlock-input!))
         "tab"        {:ok (boolean (switch-tab-2 (:id q) (user-of q)))}
         "tab-close"  {:ok (close-tab (:id q))}
         "page-scroll" (if-let [p (reading-target)] {:ok (page-scroll p (:how q))} {:ok false :error "No page open for reading"})
@@ -1448,7 +1515,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
     (try
       (cond
         (= uri "/") {:status 200 :headers {"Content-Type" "text/html; charset=utf-8"} :body @page}
-        (= uri "/status") (reply (cond-> (status-2 (user-of (query req))) @share-id (assoc :sharing true)))
+        (= uri "/status") (reply (cond-> (status-2 (user-of (query req))) @share-id (assoc :sharing true) input-lock? (assoc :lock (input-lock-status))))
         (str/starts-with? uri "/act/")
         (let [action (subs uri 5)
               r      (act action (query req))]
@@ -1590,6 +1657,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
   (reset! rv-id (:rv-id (load-state)))
   (reset! rl-id (:rl-id (load-state)))
   (reset! page-id (:page-id (load-state)))
+  (when (and input-lock? (:input-locked (load-state))) (lock-input!))
   (try (adopt-front-tab!) (catch Exception e (println "adopt-front-tab:" (ex-message e))))
   (future (loop []
             (Thread/sleep 15000)
