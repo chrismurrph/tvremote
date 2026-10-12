@@ -347,7 +347,7 @@ function renderCrumbs(s){var t=s.trail,box=document.getElementById('crumbs');
   var at=(s.service==='rl')?level(s):0;
   box.innerHTML='<button class="'+(at===0?'on':'')+'" onclick="switchTo(this,\'page\')">📖</button>'+
     t.levels.map(function(l,i){return '<span>›</span><button class="'+(at===i+1?'on':'')+'" onclick="crumb(this,'+l.id+')">'+(i+1)+'</button>'}).join('');}
-// Recent: the last 5 this person watched or read on the current service,
+// Recent: the last 10 this person watched or read on the current service,
 // under the switch. Tapping one loads it — paused at its place, or a page at
 // its scroll position. Redrawn only when it changes.
 var recentKey='',recentSvc=null;

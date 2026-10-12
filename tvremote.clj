@@ -803,10 +803,10 @@
 
 ;; status, plus a link from Reading — read from Chrome's target list only.
 (defn recent
-  "The first 5 of user's history for the service svc shows under."
+  "The first 10 of user's history for the service svc shows under."
   [user svc]
   (when-let [k (and user ({"nf" :nf "yt" :yt "page" :page "rv" :page "rl" :page} svc))]
-    (vec (for [w (take 5 (get-in (load-state) [:history user k]))]
+    (vec (for [w (take 10 (get-in (load-state) [:history user k]))]
            {:title (or (:title w) (:url w) (:id w))
             :sub   (case k
                      :nf   (:episode w)
