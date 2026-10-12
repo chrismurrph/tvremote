@@ -16,8 +16,10 @@ Chrome window on the TV. No casting, no app store.
 
 - **A spare computer on the TV's HDMI.** Any laptop or mini PC that plays video
   smoothly. It runs Linux with a desktop (developed on Fedora with GNOME) and
-  should log in automatically when switched on, since the remote starts at
-  login.
+  should log in automatically when switched on, since the remote only runs
+  while someone is logged in. On GNOME: Settings → System → Users → unlock →
+  **Automatic Login**. Without it, after a restart or power cut the computer
+  waits at its login screen and the phone says "Media machine not answering".
 - **Google Chrome** on that computer, either the normal package or the Flatpak.
 - **[Babashka](https://babashka.org)** (`bb`), the small program the remote runs
   on. `install.sh` installs it for you if it's missing (into `~/.local/bin`).
@@ -118,6 +120,12 @@ phone. While locked, the power button does nothing too (holding it down still
 forces the computer off). To unlock without a phone, type the `:unlock-word`
 from `config.edn` (`tvremote` unless you change it) on the keyboard. If the
 remote stops for any reason, the lock lifts by itself.
+
+The lock stays on until someone unlocks it, through restarts and power cuts:
+the remote locks again whenever it starts, so holding the power button to
+restart won't undo it. It works whether or not the remote's Chrome is running.
+Lost every phone? Any phone, tablet or laptop on your Wi-Fi that opens the
+remote's address can unlock it, since the remote has no password.
 
 ## Send a page from your computer
 
