@@ -1521,8 +1521,43 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         {:status 400 :body "bad address"}))
     (handler-4 req)))
 
+(defn last-svc-of
+  "Which service a successful press shows the presser using, or nil."
+  [action q]
+  (case action
+    "play" "nf"
+    "yt-play" "yt"
+    ("open" "page-link" "crumb" "page-video") "page"
+    "switch" (#{"nf" "yt" "page"} (:to q))
+    "resume" (#{"nf" "yt" "page"} (:svc q))
+    nil))
+
+(defn handler-6
+  "handler-5, plus Take over resuming the presser's last thing: each press
+   that shows them using a service is remembered (state.edn :last-svc
+   {user svc}); Start then switches to that service, which loads their own
+   last show, video or page. Netflix opens on \"Who's watching?\" after a
+   start, so for Netflix it waits for the profile pick instead."
+  [req]
+  (let [res (handler-5 req)]
+    (when (str/starts-with? (:uri req) "/act/")
+      (let [action (subs (:uri req) 5)
+            q      (query req)
+            user   (user-of q)
+            ok     (:ok (try (json/parse-string (:body res) true) (catch Exception _ nil)))
+            svc    (and user (get-in (load-state) [:last-svc user]))]
+        (when (and ok user)
+          (try
+            (when-let [s (last-svc-of action q)]
+              (when (not= s svc) (update-state! #(assoc-in % [:last-svc user] s))))
+            (cond
+              (and (= action "start") (#{"yt" "page"} svc)) (switch-service-2! svc user)
+              (and (= action "profile") (= "nf" svc))     (switch-service-2! "nf" user))
+            (catch Exception e (println "resume last:" (ex-message e)))))))
+    res))
+
 (defn -main []
-  (server/run-server handler-5 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-6 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))
