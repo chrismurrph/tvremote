@@ -68,6 +68,10 @@ button.red{background:var(--red);border-color:var(--red)}
 .crumbs span{color:var(--soft)}
 #recent h2{margin:14px 0 2px}
 .link{display:block;width:100%;text-align:left;margin-top:8px;padding:10px 12px}
+.recent{display:flex;gap:8px;align-items:stretch}
+.recent .link{flex:1;min-width:0}
+.recent .x{margin-top:8px;padding:0 14px;color:var(--soft)}
+.recent .x.sure{background:var(--red);border-color:var(--red);color:#fff;padding:0 10px}
 .link small{display:block;color:var(--soft);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chips button.sel{background:var(--red);border-color:var(--red)}
 #whorow{display:flex;justify-content:space-between;align-items:center;margin:-4px 0 6px}
@@ -349,13 +353,21 @@ function renderCrumbs(s){var t=s.trail,box=document.getElementById('crumbs');
     t.levels.map(function(l,i){return '<span>›</span><button class="'+(at===i+1?'on':'')+'" onclick="crumb(this,'+l.id+')">'+(i+1)+'</button>'}).join('');}
 // Recent: the last 10 this person watched or read on the current service,
 // under the switch. Tapping one loads it — paused at its place, or a page at
-// its scroll position. Redrawn only when it changes.
+// its scroll position. Redrawn only when it changes. The ✕ beside each takes
+// it off this person's list: a first tap turns it into "Remove?", a second
+// within 4s removes it (no dialog; a child's stray tap does nothing).
 var recentKey='',recentSvc=null;
 function renderRecent(s,v){var r=s.recent,box=document.getElementById('recent');
   var key=JSON.stringify([v,r||[]]);if(key===recentKey)return;recentKey=key;recentSvc=v;
   if(!r||!r.length){box.innerHTML='';return;}
   box.innerHTML='<h2>Recent</h2>'+r.map(function(e,i){
-    return '<button class="link" onclick="resume(this,'+i+')">'+esc(e.title)+(e.sub?'<small>'+esc(e.sub)+'</small>':'')+'</button>'}).join('');}
+    return '<div class="recent"><button class="link" onclick="resume(this,'+i+')">'+esc(e.title)+(e.sub?'<small>'+esc(e.sub)+'</small>':'')+'</button>'+
+      (e.key?'<button class="x" data-k="'+esc(e.key)+'" onclick="forget(this)">✕</button>':'')+'</div>'}).join('');}
+function forget(b){if(!b.classList.contains('sure')){b.classList.add('sure');b.textContent='Remove?';
+    setTimeout(function(){b.classList.remove('sure');b.textContent='✕';},4000);return;}
+  flash(b,'busy');call('forget?svc='+recentSvc+'&key='+encodeURIComponent(b.dataset.k)).then(function(r){
+    if(r.ok){recentKey='';poll();}else{flash(b,'fail',900);msg(r.error);}})
+  .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
 function resume(b,i){flash(b,'busy');msg('Loading on the TV…');switching=true;
   call('resume?svc='+recentSvc+'&i='+i).then(function(r){switching=false;flash(b,r.ok?'done':'fail',900);
     msg(r.ok?('Loaded '+r.loaded+(recentSvc==='page'?'':' — paused, ready to play')):r.error);setTimeout(poll,400);})

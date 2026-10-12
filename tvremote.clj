@@ -808,6 +808,7 @@
   (when-let [k (and user ({"nf" :nf "yt" :yt "page" :page "rv" :page "rl" :page} svc))]
     (vec (for [w (take 10 (get-in (load-state) [:history user k]))]
            {:title (or (:title w) (:url w) (:id w))
+            :key   (:key w)
             :sub   (case k
                      :nf   (:episode w)
                      :yt   (:channel w)
@@ -924,7 +925,7 @@
 ;; History (2026-10-09): everything each person has watched or read, per
 ;; service, newest first, 100 kept — [:history user :nf|:yt|:page]. One entry
 ;; per :key: a Netflix show (so the next episode replaces its line), a YouTube
-;; video, a page URL. The phone shows the first 5 of the current service.
+;; video, a page URL. The phone shows the first 10 of the current service.
 
 (defn add-history! [user svc m]
   (when user
@@ -1168,6 +1169,22 @@
                      (load-page! (:url w) (:scroll w))))
         {:ok true :loaded (or (:title w) "it")})
     {:ok false :error "That's no longer in the list"}))
+
+(defn forget!
+  "Take the entry keyed k out of user's recent svc (the phone's ✕, 2026-10-12).
+   Only the list changes: nothing on the TV stops, and Netflix's and YouTube's
+   own histories are left alone. If it's the item they opened, it stops being
+   theirs too, or the 15s check would put it straight back."
+  [svc user k]
+  (if (and user k (#{"nf" "yt" "page"} svc))
+    (do (when (= {:user user :key k} (get @opened svc))
+          (swap! opened dissoc svc))
+        (update-state! (fn [st] (-> st
+                                    (update-in [:history user (keyword svc)]
+                                               #(vec (remove (fn [w] (= k (:key w))) %)))
+                                    (assoc :opened @opened))))
+        {:ok true})
+    {:ok false :error "Nothing to remove"}))
 
 ;; ---------------------------------------------------------------- Tabs
 ;; The tabs on the TV, for switching. Listing them reads Chrome's target list
@@ -1436,6 +1453,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                            (when ok (some-> (page-target) zoom-when-loaded!))
                            {:ok ok}))
         "resume"     (resume! (:svc q) (user-of q) (parse-long (:i q)))
+        "forget"     (forget! (:svc q) (user-of q) (:key q))
         "tabs"       {:ok true :tabs (user-tabs)}
         "share"      (share! (:host q))
         "share-off"  (share-off!)
