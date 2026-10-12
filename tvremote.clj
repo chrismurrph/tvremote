@@ -1556,8 +1556,30 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
             (catch Exception e (println "resume last:" (ex-message e)))))))
     res))
 
+(defn volume-floor!
+  "Whatever is now playing starts no quieter than mid-range: below 30% it is
+   set to 50%. Netflix and YouTube each remember their own volume, and
+   YouTube's had drifted to 5% (2026-10-12), so a video seemed not to play."
+  []
+  (case @service
+    "nf" (some-> (tv-target) (player-do "if(p&&p.getVolume()<0.3){p.setVolume(0.5);return true}return false"))
+    "yt" (some-> (yt-target) (yt-do "if(ok&&p.getVolume()<30){p.unMute();p.setVolume(50);return true}return false"))
+    "rv" (some-> (rv-target) (yt-do "if(ok&&p.getVolume()<30){p.unMute();p.setVolume(50);return true}return false"))
+    nil))
+
+(defn handler-7
+  "handler-6, plus volume-floor! after each press that starts or loads
+   something to watch (a few seconds on, once the player is there)."
+  [req]
+  (let [res (handler-6 req)]
+    (when (#{"/act/play" "/act/yt-play" "/act/resume" "/act/switch" "/act/start"
+             "/act/profile" "/act/page-video"} (:uri req))
+      (future (Thread/sleep 4000)
+              (try (volume-floor!) (catch Exception e (println "volume-floor:" (ex-message e))))))
+    res))
+
 (defn -main []
-  (server/run-server handler-6 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-7 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))
