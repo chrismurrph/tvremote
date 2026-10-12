@@ -1448,12 +1448,19 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         "page-videos" (if-let [p (page-target)] {:ok true :videos (js p page-videos-js)} {:ok false :error "No page open for reading"})
         ;; ignoreCache so a just-republished page really is fetched again;
         ;; Chrome keeps the scroll position across a reload.
+        ;; Chrome's own restore puts back the pixel offset before the text size
+        ;; is reapplied, which lands higher up the page; the place is kept as a
+        ;; fraction of the way down instead, and put back after the size.
         "page-reload" (if-let [p (reading-target)]
-                          (do (cdp p "Page.reload" {:ignoreCache true})
-                              (Thread/sleep 500)
-                              (when (wait-for p "document.readyState==='complete'" 15000)
-                                (set-zoom-2 p "keep" (get @owner "page") (= (:id p) @rl-id)))
-                              {:ok true})
+                          (let [frac (or (:scroll (js p page-place-js)) 0)]
+                            (cdp p "Page.reload" {:ignoreCache true})
+                            (Thread/sleep 500)
+                            (when (wait-for p "document.readyState==='complete'" 15000)
+                              (set-zoom-2 p "keep" (get @owner "page") (= (:id p) @rl-id))
+                              (Thread/sleep 300)
+                              (js p (str "(()=>{const h=document.documentElement.scrollHeight-innerHeight;
+                                          scrollTo(0," frac "*h);return true})()")))
+                            {:ok true})
                           {:ok false :error "No page open for reading"})
         "page-zoom"  (if-let [p (reading-target)] (assoc (set-zoom-2 p (:how q) (or (user-of q) (get @owner "page")) (= (:id p) @rl-id)) :ok true) {:ok false :error "No page open for reading"})
         "page-links" (if-let [p (reading-target)] {:ok true :links (js p page-links-js-3)} {:ok false :error "No page open for reading"})
