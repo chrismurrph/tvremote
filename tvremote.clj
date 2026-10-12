@@ -1400,7 +1400,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
 
 (defn act [action q]
   (wake-screen!)
-  (if (and (not (chrome-up?)) (not (#{"start" "close-all"} action)))
+  (if (and (not (chrome-up?)) (not (#{"start" "close-all" "input-lock"} action)))
     {:ok false :error "Chrome isn't running — press Start"}
     ;; looked up only when used: finding it opens a Netflix tab if there's none
     (let [t (delay (tv-target))]

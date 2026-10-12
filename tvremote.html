@@ -28,7 +28,7 @@ button:disabled{opacity:.4;cursor:default}
 /* greyed while the TV is busy with a press, or (all but Start) while Chrome is down */
 /* and everything but the names until the phone knows who holds it */
 body.nowho button:not(#whobtns button),body.nowho input:not(#whoname){opacity:.4;pointer-events:none}
-body.busy button:not(#who),body.nochrome button:not(#who):not(#startbtn):not(#closeall){opacity:.4;pointer-events:none}
+body.busy button:not(#who),body.nochrome button:not(#who):not(#startbtn):not(#closeall):not(#lockbtn){opacity:.4;pointer-events:none}
 button.big{font-size:26px;padding:18px 6px}
 button.busy{background:#444}
 button.done{background:var(--ok)}
@@ -215,7 +215,7 @@ function working(path){var t0=Date.now(),el=document.getElementById('working'),l
 function workDone(){clearInterval(workTimer);document.getElementById('working').style.display='none';}
 function call(path){
   if(busy)return Promise.resolve({ok:false,error:'The TV is still busy with the last press'});
-  if(!chromeUp&&!/^(start|close-all)\b/.test(path))return Promise.resolve({ok:false,error:'Chrome isn\'t running — press Start'});
+  if(!chromeUp&&!/^(start|close-all|input-lock)\b/.test(path))return Promise.resolve({ok:false,error:'Chrome isn\'t running — press Start'});
   setBusy(1);working(path);
   return fetch('/act/'+path+(path.indexOf('?')<0?'?':'&')+'u='+encodeURIComponent(who||''))
   .then(function(r){return r.json()})
