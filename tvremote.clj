@@ -1097,11 +1097,35 @@
     (player-do t (str "if(!p)return false;
       if(Math.abs(p.getCurrentTime()-" ms ")>15000)p.seek(" ms ");return true"))))
 
+;; Back to the start (2026-10-13): a song came back at its last few seconds.
+;; A video under 10 minutes always starts again, and so does any video within
+;; 30s of its end or past 95% of it; a long one part-way through keeps its
+;; place. Decided in the tab, from the player's own duration, so records saved
+;; before this work too. Not during an ad (its duration isn't the video's).
+
+(def yt-start-over-js
+  "(()=>{const v=document.querySelector('video'),p=document.getElementById('movie_player');
+     if(!v||!(v.duration>0)||(p&&p.classList.contains('ad-showing')))return null;
+     const d=v.duration,t=v.currentTime;
+     if(d<600||d-t<30||t>0.95*d){v.currentTime=0;return true}return false})()")
+
+(defn start-over-if-done!
+  "In tab t, send a short or nearly finished video back to 0:00 (waits up to
+   ~5s for the player to know its duration)."
+  [t]
+  (loop [n 0]
+    (let [r (try (js t yt-start-over-js) (catch Exception _ nil))]
+      (when (and (nil? r) (< n 10))
+        (Thread/sleep 500)
+        (recur (inc n))))))
+
 (defn load-yt!
-  "Load YouTube watch record w in tab t, held paused at its second."
+  "Load YouTube watch record w in tab t, held paused at its second — or at the
+   start, for a short or nearly finished video (start-over-if-done!)."
   [t w]
   (cdp t "Page.navigate" {:url (str yt "/watch?v=" (:id w) "&t=" (:time-s w 0) "s")})
-  (hold-paused! t yt-pause-js yt-paused-js))
+  (hold-paused! t yt-pause-js yt-paused-js)
+  (start-over-if-done! t))
 
 (defn load-page!
   "Show url in the reading tab (opened if there isn't one) at scroll, a
