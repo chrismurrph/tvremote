@@ -362,8 +362,8 @@ function renderCrumbs(s){var t=s.trail,box=document.getElementById('crumbs');
 // out on the phone's clock, so the two machines' clocks needn't agree.
 function setLocal(s){var el=document.getElementById('local'),t='';
   var at=(s['touched-ago']!=null)?new Date(Date.now()-s['touched-ago']).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):null;
-  if(s['by-itself'])t=at?'⌨ Picked at the TV — keyboard/mouse used '+at:'▶ Came on by itself (YouTube autoplay)';
-  else if(at)t='⌨ Keyboard/mouse used at the TV '+at;
+  if(at)t='⌨ Someone used the TV\'s keyboard/mouse at '+at;
+  else if(s['by-itself'])t='▶ YouTube moved on to this by itself';
   el.textContent=t;}
 // Recent: the last 10 this person watched or read on the current service,
 // under the switch. Tapping one loads it — paused at its place, or a page at
