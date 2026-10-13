@@ -708,6 +708,18 @@
   (str/replace page-links-js-2 "text:(a.textContent.trim().replace(/\\s+/g,' ')||a.title||u)"
                "text:(a.textContent.trim().replace(/\\s+/g,' ')||(()=>{const H='h1,h2,h3,h4,h5,h6',h=a.closest(H)||(a.parentElement&&a.parentElement.querySelector(H)),t=parts[1]&&(document.getElementById(decodeURIComponent(parts[1]))||document.getElementById('user-content-'+decodeURIComponent(parts[1])));return ((h||t)?(h||t).textContent:'').trim().replace(/\\s+/g,' ')})()||(a.getAttribute('aria-label')||'').replace(/^Permalink:\\s*/,'')||a.title||u)"))
 
+(def page-links-js-4
+  "page-links-js-3, then the site's own header links (a blog's Archive, Tags,
+   Feed) after the page's, marked :site so the remote can show them under a
+   divider. Same-site only and at most 8, so a big site's menus can't flood the
+   list (2026-10-13)."
+  (str/replace page-links-js-3 "return out})()"
+               "let n=0;document.querySelectorAll('header a[href],nav a[href],.site-header a[href],a.page-link[href]').forEach(a=>{
+     const u=a.href;if(n>=8||seen.has(u)||u.split('#')[0]===here||a.origin!==location.origin)return;
+     const t=(a.textContent.trim().replace(/\\s+/g,' ')||a.title||a.getAttribute('aria-label')||'').slice(0,120);if(!t)return;
+     seen.add(u);n++;out.push({url:u,jump:false,site:true,text:t})});
+   return out})()"))
+
 (defn save-rl-id! [id] (reset! rl-id id) (update-state! #(assoc % :rl-id id)))
 
 (defn rl-target []
@@ -1481,7 +1493,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                             {:ok true})
                           {:ok false :error "No page open for reading"})
         "page-zoom"  (if-let [p (reading-target)] (assoc (set-zoom-2 p (:how q) (or (user-of q) (get @owner "page")) (= (:id p) @rl-id)) :ok true) {:ok false :error "No page open for reading"})
-        "page-links" (if-let [p (reading-target)] {:ok true :links (js p page-links-js-3)} {:ok false :error "No page open for reading"})
+        "page-links" (if-let [p (reading-target)] {:ok true :links (js p page-links-js-4)} {:ok false :error "No page open for reading"})
         "page-link"  (do (set-owner! "page" (user-of q))
                          (let [ok (rl-open (:url q))]
                            (when ok (some-> (rl-target) zoom-when-loaded!))

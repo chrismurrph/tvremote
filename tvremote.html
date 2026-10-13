@@ -329,8 +329,10 @@ function pageLinks(b){flash(b,'busy');
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
 function renderLinks(links){var box=document.getElementById('pgvideos');
   if(!links.length){box.innerHTML='<p class="nolinks" style="color:var(--soft)">No links on this page</p>';return;}
+  var site=false;
   box.innerHTML=links.map(function(l){
-    return '<button class="link" data-u="'+esc(l.url)+'"'+(l.jump?' data-jump="1"':'')+' onclick="openPageLink(this)">'+(l.jump?'↓ ':'')+esc(l.text)+'<small>'+(l.jump?'on this page · ':'')+esc(l.url)+'</small></button>'}).join('');}
+    var head=(l.site&&!site)?'<p class="sitelinks" style="color:var(--soft);margin:14px 0 0;border-top:1px solid var(--soft);padding-top:8px">This site</p>':'';if(l.site)site=true;
+    return head+'<button class="link" data-u="'+esc(l.url)+'"'+(l.jump?' data-jump="1"':'')+' onclick="openPageLink(this)">'+(l.jump?'↓ ':'')+esc(l.text)+'<small>'+(l.jump?'on this page · ':'')+esc(l.url)+'</small></button>'}).join('');}
 // After a link or breadcrumb opens, a links list on show is replaced by the
 // new page's links (left alone if the videos are showing instead).
 function refreshLinks(){var box=document.getElementById('pgvideos');if(!box.querySelector('button.link,.nolinks'))return;
