@@ -809,7 +809,7 @@
                     ps (when-not (str/includes? (:url t) "/watch")
                          (try (seq (js t profiles-js)) (catch Exception _ nil)))]
                 (cond-> (assoc (player-do t status-js) :chrome true :service "nf" :picked @picked)
-                  m  (assoc :title (:title m) :episode (:episode m))
+                  m  (assoc :title (:title m) :episode (:episode m) :show (:show m))
                   ps (assoc :profiles (vec ps))))
               {:chrome true :service "nf" :away true})))))
 
@@ -1414,8 +1414,9 @@
 
 (defn local-status
   "For /status: :touched-ago (ms since the keyboard or mouse was used, when
-   that was after the last phone press), and :by-itself when YouTube shows a
-   video no phone opened."
+   that was after the last phone press); :by-itself when YouTube or Netflix
+   has moved off what a phone opened; :keepable when what's playing there is
+   no phone's (Keep this)."
   [st]
   (let [t @last-touch now (System/currentTimeMillis)
         id (some->> (:url st) (re-find #"[?&]v=([\w-]{11})") second)
@@ -1423,22 +1424,34 @@
     (cond-> {}
       (and t (or (nil? @last-press) (> t @last-press))) (assoc :touched-ago (- now t))
       (and (= "yt" (:service st)) id k (not= id k)) (assoc :by-itself true)
-      (and (= "yt" (:service st)) id (not= id k))   (assoc :keepable true))))
+      (and (= "yt" (:service st)) id (not= id k))   (assoc :keepable true)
+      (and (= "nf" (:service st)) (:show st)
+           (not= (:show st) (get-in @opened ["nf" :key]))) (assoc :keepable true)
+      (and (= "nf" (:service st)) (:show st) (get-in @opened ["nf" :key])
+           (not= (:show st) (get-in @opened ["nf" :key]))) (assoc :by-itself true))))
 
 (defn keep!
-  "Make the YouTube video now playing user's, as if they had opened it from
-   the phone (Keep this, 2026-10-14): it goes into their Recent and its place
-   is saved from now on. For a video that came on by itself or was picked at
-   the TV, which otherwise only a search could reach."
-  [user]
-  (let [s  (some-> (yt-target) (yt-do yt-status-js))
-        id (some->> (:url s) (re-find #"[?&]v=([\w-]{11})") second)]
-    (if (and user id)
-      (do (set-owner! "yt" user)
-          (set-opened! "yt" user id)
+  "Make what's playing on svc (\"yt\" or \"nf\") user's, as if they had opened
+   it from the phone (Keep this, 2026-10-14): it goes into their Recent and
+   its place is saved from now on. For something that came on by itself or
+   was picked at the TV, which otherwise only a search could reach. Netflix is
+   kept by show, like a phone-opened show, so its next episodes follow."
+  [svc user]
+  (let [[t js-s] (case svc
+                   "yt" [(yt-target) yt-status-js]
+                   "nf" [(first (filter (partial on-site? "netflix.com") (targets))) nil]
+                   nil)
+        k (case svc
+            "yt" (some->> (some-> t (yt-do js-s) :url) (re-find #"[?&]v=([\w-]{11})") second)
+            "nf" (when (and t (str/includes? (:url t) "/watch"))
+                   (:show (try (js t nf-meta-js) (catch Exception _ nil))))
+            nil)]
+    (if (and user k)
+      (do (set-owner! svc user)
+          (set-opened! svc user k)
           (record-watching-2!)
-          {:ok true :kept (:title s)})
-      {:ok false :error "No YouTube video to keep"})))
+          {:ok true :kept (or (:title (first (get-in (load-state) [:history user (keyword svc)]))) k)})
+      {:ok false :error "Nothing playing to keep"})))
 
 (def repo-url "https://github.com/chrismurrph/tvremote")
 
@@ -1541,7 +1554,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                            {:ok ok}))
         "resume"     (resume! (:svc q) (user-of q) (parse-long (:i q)))
         "forget"     (forget! (:svc q) (user-of q) (:key q))
-        "keep"       (keep! (user-of q))
+        "keep"       (keep! (:svc q) (user-of q))
         "tabs"       {:ok true :tabs (user-tabs)}
         "share"      (share! (:host q))
         "share-off"  (share-off!)
@@ -1710,7 +1723,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
     ("open" "page-link" "crumb" "page-video") "page"
     "switch" (#{"nf" "yt" "page"} (:to q))
     "resume" (#{"nf" "yt" "page"} (:svc q))
-    "keep" "yt"
+    "keep" (#{"nf" "yt"} (:svc q))
     nil))
 
 (defn handler-6
