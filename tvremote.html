@@ -77,6 +77,7 @@ button.red{background:var(--red);border-color:var(--red)}
 #whorow{display:flex;justify-content:space-between;align-items:center;margin:-4px 0 6px}
 #local{color:#e0a030;font-size:13px;margin-top:4px}
 #local:empty{display:none}
+#keepbtn{padding:4px 12px;font-size:13px;border-radius:14px;margin-left:6px}
 #wake{color:var(--soft);font-size:13px}
 #who{padding:4px 12px;font-size:13px;border-radius:14px;color:var(--soft)}
 #whobox{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px}
@@ -360,11 +361,17 @@ function renderCrumbs(s){var t=s.trail,box=document.getElementById('crumbs');
 // keyboard or mouse was used since the last phone press (touched-ago, ms), and
 // whether YouTube shows a video no phone opened (by-itself). Time is worked
 // out on the phone's clock, so the two machines' clocks needn't agree.
+var localKey='';
 function setLocal(s){var el=document.getElementById('local'),t='';
   var at=(s['touched-ago']!=null)?new Date(Date.now()-s['touched-ago']).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):null;
   if(at)t='⌨ Someone used the TV\'s keyboard/mouse at '+at;
   else if(s['by-itself'])t='▶ YouTube moved on to this by itself';
-  el.textContent=t;}
+  // Keep this: make a video no phone opened the holder's (into their Recent)
+  var k=t&&s.keepable,key=t+'|'+(k?1:0);if(key===localKey)return;localKey=key;
+  el.innerHTML=esc(t)+(k?' <button id="keepbtn" onclick="keepThis(this)">Keep this</button>':'');}
+function keepThis(b){flash(b,'busy');call('keep').then(function(r){
+    flash(b,r.ok?'done':'fail',900);msg(r.ok?('Kept: '+r.kept):r.error);setTimeout(poll,400);})
+  .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
 // Recent: the last 10 this person watched or read on the current service,
 // under the switch. Tapping one loads it — paused at its place, or a page at
 // its scroll position. Redrawn only when it changes. The ✕ beside each takes

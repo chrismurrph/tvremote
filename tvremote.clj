@@ -1422,7 +1422,23 @@
         k  (get-in @opened ["yt" :key])]
     (cond-> {}
       (and t (or (nil? @last-press) (> t @last-press))) (assoc :touched-ago (- now t))
-      (and (= "yt" (:service st)) id k (not= id k)) (assoc :by-itself true))))
+      (and (= "yt" (:service st)) id k (not= id k)) (assoc :by-itself true)
+      (and (= "yt" (:service st)) id (not= id k))   (assoc :keepable true))))
+
+(defn keep!
+  "Make the YouTube video now playing user's, as if they had opened it from
+   the phone (Keep this, 2026-10-14): it goes into their Recent and its place
+   is saved from now on. For a video that came on by itself or was picked at
+   the TV, which otherwise only a search could reach."
+  [user]
+  (let [s  (some-> (yt-target) (yt-do yt-status-js))
+        id (some->> (:url s) (re-find #"[?&]v=([\w-]{11})") second)]
+    (if (and user id)
+      (do (set-owner! "yt" user)
+          (set-opened! "yt" user id)
+          (record-watching-2!)
+          {:ok true :kept (:title s)})
+      {:ok false :error "No YouTube video to keep"})))
 
 (def repo-url "https://github.com/chrismurrph/tvremote")
 
@@ -1525,6 +1541,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                            {:ok ok}))
         "resume"     (resume! (:svc q) (user-of q) (parse-long (:i q)))
         "forget"     (forget! (:svc q) (user-of q) (:key q))
+        "keep"       (keep! (user-of q))
         "tabs"       {:ok true :tabs (user-tabs)}
         "share"      (share! (:host q))
         "share-off"  (share-off!)
@@ -1693,6 +1710,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
     ("open" "page-link" "crumb" "page-video") "page"
     "switch" (#{"nf" "yt" "page"} (:to q))
     "resume" (#{"nf" "yt" "page"} (:svc q))
+    "keep" "yt"
     nil))
 
 (defn handler-6
