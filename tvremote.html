@@ -75,6 +75,8 @@ button.red{background:var(--red);border-color:var(--red)}
 .link small{display:block;color:var(--soft);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chips button.sel{background:var(--red);border-color:var(--red)}
 #whorow{display:flex;justify-content:space-between;align-items:center;margin:-4px 0 6px}
+#local{color:#e0a030;font-size:13px;margin-top:4px}
+#local:empty{display:none}
 #wake{color:var(--soft);font-size:13px}
 #who{padding:4px 12px;font-size:13px;border-radius:14px;color:var(--soft)}
 #whobox{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px}
@@ -90,7 +92,7 @@ button.red{background:var(--red);border-color:var(--red)}
 <div id="whobox" style="display:none"><div style="margin-bottom:10px">Who uses this phone? The TV keeps each person's last show and place.</div>
 <div class="profiles" id="whobtns"></div></div>
 <div id="whorow"><span id="wake"></span><button id="who" onclick="askWho()">…</button></div>
-<div id="status"><div id="now">…</div><div id="sub"></div></div>
+<div id="status"><div id="now">…</div><div id="sub"></div><div id="local"></div></div>
 <div id="startrow" style="display:none;margin-top:12px"><button id="startbtn" class="red" style="width:100%" onclick="act(this,'start')">▶ Start Chrome on the TV</button>
 <button id="closeall" style="width:100%;margin-top:10px;display:none" onclick="act(this,'close-all')">✕ Close all other Chrome windows</button></div>
 
@@ -248,6 +250,7 @@ function poll(){
     var sb=document.getElementById('startbtn'),other=(!s.chrome&&s.others>0);
     sb.textContent=other?'▶ Take over the TV':'▶ Start Chrome on the TV';
     var now=document.getElementById('now'),sub=document.getElementById('sub');
+    setLocal(s);
     if(!s.chrome){now.textContent='Chrome is not running on the TV';sub.textContent='';return;}
     if(s.error){now.textContent='TV tab busy';sub.textContent=s.error;return;}
     // a video from Reading is still Reading, as far as the switch goes
@@ -353,6 +356,15 @@ function renderCrumbs(s){var t=s.trail,box=document.getElementById('crumbs');
   var at=(s.service==='rl')?level(s):0;
   box.innerHTML='<button class="'+(at===0?'on':'')+'" onclick="switchTo(this,\'page\')">📖</button>'+
     t.levels.map(function(l,i){return '<span>›</span><button class="'+(at===i+1?'on':'')+'" onclick="crumb(this,'+l.id+')">'+(i+1)+'</button>'}).join('');}
+// Used at the TV (2026-10-13): the server says when the TV computer's own
+// keyboard or mouse was used since the last phone press (touched-ago, ms), and
+// whether YouTube shows a video no phone opened (by-itself). Time is worked
+// out on the phone's clock, so the two machines' clocks needn't agree.
+function setLocal(s){var el=document.getElementById('local'),t='';
+  var at=(s['touched-ago']!=null)?new Date(Date.now()-s['touched-ago']).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):null;
+  if(s['by-itself'])t=at?'⌨ Picked at the TV — keyboard/mouse used '+at:'▶ Came on by itself (YouTube autoplay)';
+  else if(at)t='⌨ Keyboard/mouse used at the TV '+at;
+  el.textContent=t;}
 // Recent: the last 10 this person watched or read on the current service,
 // under the switch. Tapping one loads it — paused at its place, or a page at
 // its scroll position. Redrawn only when it changes. The ✕ beside each takes

@@ -1365,6 +1365,41 @@
 (defn input-lock-status []
   (when input-lock? {:locked (locked?) :error @lock-error}))
 
+;; ---------------------------------------------------------------- used at the TV
+;; Whether someone used the TV computer's own keyboard or mouse (2026-10-13),
+;; so the phone can tell a video picked at the TV from YouTube's autoplay.
+;; inputwatch.py only listens (no grab) and prints a line per use; it runs
+;; whenever the lock is available (:input-lock), since it needs the same
+;; 'input' group. last-press is the latest phone press (handler-8).
+
+(def last-touch "When the keyboard or mouse was last used, ms, or nil." (atom nil))
+(def last-press "When a phone last pressed something, ms, or nil." (atom nil))
+
+(defn watch-input!
+  "Run inputwatch.py for good, restarting it 30s after it ends."
+  []
+  (future
+    (loop []
+      (try (let [pr (p/process {:err :string} "python3" (str base-dir "/inputwatch.py"))]
+             (doseq [_ (line-seq (io/reader (:out pr)))]
+               (reset! last-touch (System/currentTimeMillis)))
+             (let [r @pr] (println "input watch ended:" (:exit r) (str/trim (str (:err r))))))
+           (catch Exception e (println "input watch:" (ex-message e))))
+      (Thread/sleep 30000)
+      (recur))))
+
+(defn local-status
+  "For /status: :touched-ago (ms since the keyboard or mouse was used, when
+   that was after the last phone press), and :by-itself when YouTube shows a
+   video no phone opened."
+  [st]
+  (let [t @last-touch now (System/currentTimeMillis)
+        id (some->> (:url st) (re-find #"[?&]v=([\w-]{11})") second)
+        k  (get-in @opened ["yt" :key])]
+    (cond-> {}
+      (and t (or (nil? @last-press) (> t @last-press))) (assoc :touched-ago (- now t))
+      (and (= "yt" (:service st)) id k (not= id k)) (assoc :by-itself true))))
+
 (def repo-url "https://github.com/chrismurrph/tvremote")
 
 (defn share-html
@@ -1552,7 +1587,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
     (try
       (cond
         (= uri "/") {:status 200 :headers {"Content-Type" "text/html; charset=utf-8"} :body @page}
-        (= uri "/status") (reply (cond-> (status-2 (user-of (query req))) @share-id (assoc :sharing true) input-lock? (assoc :lock (input-lock-status))))
+        (= uri "/status") (reply (cond-> (status-2 (user-of (query req))) @share-id (assoc :sharing true) input-lock? (assoc :lock (input-lock-status)) input-lock? (as-> st (merge st (local-status st)))))
         (str/starts-with? uri "/act/")
         (let [action (subs uri 5)
               r      (act action (query req))]
@@ -1682,8 +1717,17 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
               (try (volume-floor!) (catch Exception e (println "volume-floor:" (ex-message e))))))
     res))
 
+(defn handler-8
+  "handler-7, plus remembering when a phone last pressed something, so a later
+   use of the TV's keyboard or mouse can be told apart (local-status)."
+  [req]
+  (let [res (handler-7 req)]
+    (when (str/starts-with? (str (:uri req)) "/act/")
+      (reset! last-press (System/currentTimeMillis)))
+    res))
+
 (defn -main []
-  (server/run-server handler-7 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-8 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))
@@ -1695,6 +1739,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
   (reset! rl-id (:rl-id (load-state)))
   (reset! page-id (:page-id (load-state)))
   (when (and input-lock? (:input-locked (load-state))) (lock-input!))
+  (when input-lock? (watch-input!))
   (try (adopt-front-tab!) (catch Exception e (println "adopt-front-tab:" (ex-message e))))
   (future (loop []
             (Thread/sleep 15000)
