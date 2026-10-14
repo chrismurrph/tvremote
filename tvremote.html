@@ -270,7 +270,7 @@ function poll(){
     var name=s.title||[s.picked,s.episode].filter(Boolean).join(' · ');
     now.textContent=watching?((s.playing?'▶ Playing':'⏸ Paused')+(s.service==='rv'?' from Reading':'')+(name?' — '+name:'')):(s.service==='yt'?'On YouTube · not playing':'On Netflix · not playing');
     sub.textContent=(watching&&s.duration)?clock(s.time)+' / '+clock(s.duration)+(s.volume!=null?'  ·  vol '+Math.round(s.volume*100)+'%':''):'';
-  }).catch(function(){document.getElementById('now').textContent='Media machine not answering';});}
+  }).catch(function(){document.getElementById('now').textContent='Can\'t reach the TV — is this phone on the home Wi-Fi?';document.getElementById('sub').textContent='(or the media machine is off)';});}
 
 function render(r){
   var out=document.getElementById('results');out.innerHTML='';msg('');
