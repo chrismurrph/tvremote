@@ -1816,15 +1816,16 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
   (when (and input-lock? (:input-locked (load-state))) (lock-input!))
   (when input-lock? (watch-input!))
   (try (adopt-front-tab!) (catch Exception e (println "adopt-front-tab:" (ex-message e))))
-  (future (loop []
-            (Thread/sleep 15000)
-            (try (when (chrome-up?) (record-watching-2!))
-                 (catch Exception e (println "record-watching:" (ex-message e))))
-            (recur)))
-  (future (loop []
+  ;; The one tick (2026-10-15): every 3s close YouTube's chat replay, and
+  ;; every 5th tick (15s) save everyone's place. One loop, not one per job.
+  (future (loop [n 1]
             (Thread/sleep 3000)
-            (try (when (chrome-up?) (hide-yt-chat!)) (catch Exception _ nil))
-            (recur)))
+            (when (chrome-up?)
+              (try (hide-yt-chat!) (catch Exception _ nil))
+              (when (zero? (mod n 5))
+                (try (record-watching-2!)
+                     (catch Exception e (println "record-watching:" (ex-message e))))))
+            (recur (inc n))))
   @(promise))
 
 (when (= *file* (System/getProperty "babashka.file")) (-main))
