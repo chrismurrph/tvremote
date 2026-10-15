@@ -1119,6 +1119,26 @@
         (Thread/sleep 500)
         (recur (inc n))))))
 
+;; No chat replay (2026-10-15): a long video with a recorded live stream
+;; opens YouTube's "Top chat replay" beside the player, even full screen,
+;; shrinking the video and showing strangers' chat to whoever is watching.
+;; YouTube's own hide button closes it and the player fills the screen again;
+;; a loop presses it within a few seconds of it appearing (watch-yt-chat!).
+
+(def yt-hide-chat-js
+  "(()=>{const f=document.querySelector('ytd-watch-flexy');
+     if(!f||!f.hasAttribute('live-chat-present-and-expanded'))return false;
+     const b=document.querySelector('ytd-live-chat-frame #show-hide-button button');
+     if(b){b.click();return true}return false})()")
+
+(defn hide-yt-chat!
+  "Close YouTube's chat replay in any YouTube watch tab (the main one or
+   Reading's video tab) where it's open. Never opens a tab."
+  []
+  (doseq [t (filter #(and (on-site? "youtube.com" %) (str/includes? (str (:url %)) "/watch"))
+                    (targets))]
+    (try (js t yt-hide-chat-js) (catch Exception _ nil))))
+
 (defn load-yt!
   "Load YouTube watch record w in tab t, held paused at its second — or at the
    start, for a short or nearly finished video (start-over-if-done!)."
@@ -1800,6 +1820,10 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
             (Thread/sleep 15000)
             (try (when (chrome-up?) (record-watching-2!))
                  (catch Exception e (println "record-watching:" (ex-message e))))
+            (recur)))
+  (future (loop []
+            (Thread/sleep 3000)
+            (try (when (chrome-up?) (hide-yt-chat!)) (catch Exception _ nil))
             (recur)))
   @(promise))
 
