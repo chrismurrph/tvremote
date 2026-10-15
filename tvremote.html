@@ -28,7 +28,7 @@ button:disabled{opacity:.4;cursor:default}
 /* greyed while the TV is busy with a press, or (all but Start) while Chrome is down */
 /* and everything but the names until the phone knows who holds it */
 body.nowho button:not(#whobtns button),body.nowho input:not(#whoname){opacity:.4;pointer-events:none}
-body.busy button:not(#who),body.nochrome button:not(#who):not(#startbtn):not(#closeall):not(#lockbtn){opacity:.4;pointer-events:none}
+body.busy button:not(#who),body.nochrome button:not(#who):not(#startbtn):not(#closeall):not(#lockbtn):not(#shutbtn){opacity:.4;pointer-events:none}
 button.big{font-size:26px;padding:18px 6px}
 button.busy{background:#444}
 button.done{background:var(--ok)}
@@ -158,6 +158,10 @@ button.red{background:var(--red);border-color:var(--red)}
   <input id="link" type="url" placeholder="https://…" enterkeyhint="go" style="flex:1;font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:12px" onkeydown="if(event.key==='Enter')openLink(document.getElementById('openbtn'))">
   <button id="openbtn" onclick="openLink(this)">Open</button>
 </div>
+
+<h2>⏻ The TV computer</h2>
+<button id="shutbtn" style="width:100%" onclick="shutDown(this)">Shut it down</button>
+<p style="color:var(--soft);margin:6px 0 0">Its power button does nothing now; press it to turn the computer back on.</p>
 </details>
 
 <div id="find">
@@ -222,7 +226,7 @@ function working(path){var t0=Date.now(),el=document.getElementById('working'),l
 function workDone(){clearInterval(workTimer);document.getElementById('working').style.display='none';}
 function call(path){
   if(busy)return Promise.resolve({ok:false,error:'The TV is still busy with the last press'});
-  if(!chromeUp&&!/^(start|close-all|input-lock)\b/.test(path))return Promise.resolve({ok:false,error:'Chrome isn\'t running — press Start'});
+  if(!chromeUp&&!/^(start|close-all|input-lock|shutdown)\b/.test(path))return Promise.resolve({ok:false,error:'Chrome isn\'t running — press Start'});
   setBusy(1);working(path);
   return fetch('/act/'+path+(path.indexOf('?')<0?'?':'&')+'u='+encodeURIComponent(who||''))
   .then(function(r){return r.json()})
@@ -369,6 +373,14 @@ function setLocal(s){var el=document.getElementById('local'),t='';s_svc=s.servic
   // Keep this: make a video no phone opened the holder's (into their Recent)
   var k=t&&s.keepable,key=t+'|'+(k?1:0);if(key===localKey)return;localKey=key;
   el.innerHTML=esc(t)+(k?' <button id="keepbtn" onclick="keepThis(this)">Keep this</button>':'');}
+// Shut down (2026-10-15): the media machine's power button is set to do
+// nothing, so this is the tidy way off. Two taps, like the ✕ on Recent.
+function shutDown(b){if(!b.classList.contains('sure')){b.classList.add('sure');b.textContent='Really shut it down?';
+    b.style.background='var(--red)';b.style.borderColor='var(--red)';
+    setTimeout(function(){b.classList.remove('sure');b.textContent='Shut it down';b.style.background='';b.style.borderColor='';},4000);return;}
+  flash(b,'busy');call('shutdown').then(function(r){flash(b,r.ok?'done':'fail',900);
+    msg(r.ok?'Shutting down — press its power button to turn it back on':r.error);})
+  .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
 function keepThis(b){flash(b,'busy');call('keep?svc='+(s_svc||'yt')).then(function(r){
     flash(b,r.ok?'done':'fail',900);msg(r.ok?('Kept: '+r.kept):r.error);setTimeout(poll,400);})
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}

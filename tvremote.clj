@@ -1450,6 +1450,18 @@
       (and (= "nf" (:service st)) (:show st) (get-in @opened ["nf" :key])
            (not= (:show st) (get-in @opened ["nf" :key]))) (assoc :by-itself true))))
 
+(defn shut-down!
+  "Power the media machine off (the phone's Shut it down, 2026-10-15; its
+   power button does nothing). A second's wait lets the answer reach the
+   phone first. Allowed without a password: the service runs in the logged-in
+   user's manager, and logind's CanPowerOff says yes there."
+  []
+  (println "shutting down, from a phone")
+  (future (Thread/sleep 1000)
+          (try (p/shell "systemctl" "poweroff")
+               (catch Exception e (println "shut down:" (ex-message e)))))
+  {:ok true})
+
 (defn keep!
   "Make what's playing on svc (\"yt\" or \"nf\") user's, as if they had opened
    it from the phone (Keep this, 2026-10-14): it goes into their Recent and
@@ -1575,6 +1587,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         "resume"     (resume! (:svc q) (user-of q) (parse-long (:i q)))
         "forget"     (forget! (:svc q) (user-of q) (:key q))
         "keep"       (keep! (:svc q) (user-of q))
+        "shutdown"   (shut-down!)
         "tabs"       {:ok true :tabs (user-tabs)}
         "share"      (share! (:host q))
         "share-off"  (share-off!)
