@@ -1975,6 +1975,8 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
 
 (def converting "The ffmpeg at work: {:proc p :rel rel :stopped bool}, or nil." (atom nil))
 
+(def convert-off-until "No converting before this, ms (state.edn :convert-off-until; /act/convert-off)." (atom 0))
+
 (defn signal!
   "Send sig to the conversion c's ffmpeg, found by its output file (unique)."
   [c sig]
@@ -2005,7 +2007,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
 (defn convert-tick!
   "Every few seconds: freeze, thaw, finish or start a conversion."
   []
-  (let [c @converting idle (tv-idle?)]
+  (let [c @converting idle (and (> (System/currentTimeMillis) @convert-off-until) (tv-idle?))]
     (cond
       (and c (not (p/alive? (:proc c))))
       (let [r @(:proc c)]
@@ -2307,7 +2309,14 @@ showNow();
   (when (str/starts-with? (str (:uri req)) "/act/")
     (reset! last-press (System/currentTimeMillis))
     (when-let [c @converting] (signal! c "STOP") (swap! converting assoc :stopped true)))
-  (handler-11 req))
+  (if (= "/act/convert-off" (:uri req))
+    (let [h     (or (parse-double (or (:hours (query req)) "")) 10)
+          until (+ (System/currentTimeMillis) (long (* h 3600 1000)))]
+      (reset! convert-off-until until)
+      (update-state! #(assoc % :convert-off-until until))
+      (println "videos: off until" (str (java.time.Instant/ofEpochMilli until)))
+      (reply {:ok true :until until}))
+    (handler-11 req)))
 
 (defn -main []
   (server/run-server handler-12 {:port port :ip "0.0.0.0" :thread 8})
@@ -2324,6 +2333,7 @@ showNow();
   (reset! ph-id (:ph-id (load-state)))
   (reset! ph-at (:ph-at (load-state)))
   (reset! tv-who (:tv-who (load-state)))
+  (reset! convert-off-until (or (:convert-off-until (load-state)) 0))
   (when (and input-lock? (:input-locked (load-state))) (lock-input!))
   (when input-lock? (watch-input!))
   (convert-videos!)
