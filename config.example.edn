@@ -4,6 +4,7 @@
  ;; lists and places. Leave empty and each phone asks for a name instead.
  ;; A name can instead be a map with :reading? true: then only those
  ;; people get the Reading button (with none marked, everyone does).
+ ;; :photos? true gives the Photos button (with none marked, no one has it).
  :people []                       ; e.g. [{:name "Ann" :reading? true} "Bob"]
 
  ;; The port the phone page is served on: http://<this computer>:7700/

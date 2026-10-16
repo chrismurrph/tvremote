@@ -37,6 +37,8 @@
 ;; everyone when no one has it.
 (def people-names (mapv #(if (map? %) (:name %) %) (:people config)))
 (def reading-people (vec (keep #(when (and (map? %) (:reading? %)) (:name %)) (:people config))))
+;; :photos? the same way (2026-10-16), but with no one marked no one gets it.
+(def photos-people (vec (keep #(when (and (map? %) (:photos? %)) (:name %)) (:people config))))
 
 (def port (parse-long (or (System/getenv "TVREMOTE_PORT") (str (:port config)))))
 (def cdp-port (:cdp-port config))
@@ -1773,10 +1775,10 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
 
 (defn handler-3
   "handler-2, plus /config: the names the phone offers (the :people setting),
-   and who gets Reading (empty: everyone)."
+   who gets Reading (empty: everyone) and who gets Photos (empty: no one)."
   [req]
   (if (= "/config" (:uri req))
-    (reply {:people people-names :reading reading-people})
+    (reply {:people people-names :reading reading-people :photos photos-people})
     (handler-2 req)))
 
 (def home-screen-files

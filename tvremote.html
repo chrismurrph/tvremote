@@ -57,7 +57,9 @@ button.red{background:var(--red);border-color:var(--red)}
 .svc button.on.yt{background:#c00}
 .svc button.on.pg{background:#3a6ea5}
 .noread #svc-page{display:none}
-.noread .svc{grid-template-columns:repeat(2,1fr)}
+.svc{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:1fr}
+#svc-photos{display:none}
+.pics #svc-photos{display:block}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .grid .tile{max-width:none}
 .grid .tile span{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;color:var(--fg)}
@@ -129,7 +131,7 @@ button.red{background:var(--red);border-color:var(--red)}
 </div>
 </div>
 
-<div class="svc"><button id="svc-nf" onclick="switchTo(this,'nf')">Netflix</button><button id="svc-yt" class="yt" onclick="switchTo(this,'yt')">YouTube</button><button id="svc-page" class="pg" onclick="switchTo(this,'page')">Reading</button></div>
+<div class="svc"><button id="svc-nf" onclick="switchTo(this,'nf')">Netflix</button><button id="svc-yt" class="yt" onclick="switchTo(this,'yt')">YouTube</button><button id="svc-page" class="pg" onclick="switchTo(this,'page')">Reading</button><button id="svc-photos" onclick="photos(this)">Photos</button></div>
 <div id="recent"></div>
 
 <div id="reading" style="display:none">
@@ -199,14 +201,19 @@ function showWho(){document.getElementById('who').textContent=who?('👤 '+who.c
 // Reading only for the names the server lists (:reading? in config.edn,
 // 2026-10-16); with none listed, everyone has it. The others get two buttons.
 var readers=[];
-function showReading(){var r=readers||[];document.body.classList.toggle('noread',
-  r.length>0&&r.map(slug).indexOf(who)<0);}
+function showReading(){var r=readers||[],p=photoers||[];document.body.classList.toggle('noread',
+  r.length>0&&r.map(slug).indexOf(who)<0);
+  document.body.classList.toggle('pics',p.map(slug).indexOf(who)>=0);}
+// Photos (2026-10-16): only for the names marked :photos? (none marked, no
+// one). Just the button so far; where the photos come from is still to set up.
+var photoers=[];
+function photos(b){msg('Photos aren\'t set up yet');}
 // The names come from the server's :people setting; with none set, the phone
 // asks for one. What's kept and sent is a plain lower-case form of the name.
 function slug(n){return String(n).toLowerCase().replace(/[^a-z]/g,'').slice(0,20);}
 function setWho(n){n=slug(n);if(!n)return;who=n;try{localStorage.setItem('tvremote-who',n);}catch(e){}showWho();}
 function loadPeople(){fetch('/config').then(function(r){return r.json()}).then(function(c){
-  var box=document.getElementById('whobtns'),ps=c.people||[];readers=c.reading||[];showReading();
+  var box=document.getElementById('whobtns'),ps=c.people||[];readers=c.reading||[];photoers=c.photos||[];showReading();
   box.innerHTML=ps.length?ps.map(function(p){return '<button data-n="'+esc(p)+'" onclick="setWho(this.dataset.n)">'+esc(p)+'</button>'}).join(''):
     '<input id="whoname" placeholder="Your name" style="flex:1;font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:12px">'+
     '<button onclick="setWho(document.getElementById(\'whoname\').value)">OK</button>';}).catch(function(){});}
