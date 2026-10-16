@@ -2127,8 +2127,29 @@ showNow();
               res))
           res)))))
 
+;; One person for the TV (2026-10-16): there's one TV, so every phone shows
+;; the same person, the TV's: whoever last pressed anything or picked a name
+;; on any phone (state.edn :tv-who). /status carries it as :who and each
+;; phone takes it on, with that person's buttons and Recent.
+
+(def tv-who "The TV's current person (a phone's u=)." (atom nil))
+
+(defn handler-10
+  "handler-9, plus the TV's one current person: set by each press, given out
+   with /status."
+  [req]
+  (let [uri (:uri req)
+        u   (when (str/starts-with? uri "/act/") (user-of (query req)))]
+    (when (and u (not= u @tv-who))
+      (reset! tv-who u)
+      (update-state! #(assoc % :tv-who u)))
+    (let [res (handler-9 req)]
+      (if (and (= "/status" uri) @tv-who (= 200 (:status res)))
+        (reply (assoc (json/parse-string (:body res) true) :who @tv-who))
+        res))))
+
 (defn -main []
-  (server/run-server handler-9 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-10 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))
@@ -2141,9 +2162,12 @@ showNow();
   (reset! page-id (:page-id (load-state)))
   (reset! ph-id (:ph-id (load-state)))
   (reset! ph-at (:ph-at (load-state)))
+  (reset! tv-who (:tv-who (load-state)))
   (when (and input-lock? (:input-locked (load-state))) (lock-input!))
   (when input-lock? (watch-input!))
   (try (adopt-front-tab!) (catch Exception e (println "adopt-front-tab:" (ex-message e))))
+  ;; no current person yet: the owner of what's showing
+  (when-not @tv-who (reset! tv-who (get @owner (get {"rv" "page" "rl" "page"} @service @service))))
   ;; The one tick (2026-10-15): every 3s close YouTube's chat replay and deal
   ;; with Netflix's Still watching?, and every 5th tick (15s) save everyone's
   ;; place. One loop, not one per job.

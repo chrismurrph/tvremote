@@ -235,9 +235,14 @@ function phArchive(b){if(!b.classList.contains('sure')){b.classList.add('sure');
 function slug(n){return String(n).toLowerCase().replace(/[^a-z]/g,'').slice(0,20);}
 function setWho(n){n=slug(n);if(!n)return;var was=who;who=n;try{localStorage.setItem('tvremote-who',n);}catch(e){}showWho();
   // a new name: the TV goes to what they used last (2026-10-16)
-  if(n!==was&&chromeUp){msg('Switching the TV to '+n.charAt(0).toUpperCase()+n.slice(1)+'\'s last…');
-    call('who').then(function(r){msg(r.ok?(r.loaded?('Loaded '+r.loaded+' — paused, ready to play'):''):r.error);recentKey='';setTimeout(poll,400);})
-    .catch(function(e){msg('No answer: '+e);});}}
+  if(n!==was&&chromeUp){msg('Switching the TV to '+n.charAt(0).toUpperCase()+n.slice(1)+'\'s last…');whoBusy=true;
+    call('who').then(function(r){whoBusy=false;msg(r.ok?(r.loaded?('Loaded '+r.loaded+' — paused, ready to play'):''):r.error);recentKey='';setTimeout(poll,400);})
+    .catch(function(e){whoBusy=false;msg('No answer: '+e);});}}
+// One person for the TV (2026-10-16): every phone takes on the TV's current
+// person from /status (who), except while its own name pick is on its way.
+var whoBusy=false;
+function syncWho(s){if(whoBusy||!s.who||s.who===who)return;
+  who=s.who;try{localStorage.setItem('tvremote-who',who);}catch(e){}recentKey='';showWho();}
 function loadPeople(){fetch('/config').then(function(r){return r.json()}).then(function(c){
   var box=document.getElementById('whobtns'),ps=c.people||[];readers=c.reading||[];photoers=c.photos||[];showReading();
   box.innerHTML=ps.length?ps.map(function(p){return '<button data-n="'+esc(p)+'" onclick="setWho(this.dataset.n)">'+esc(p)+'</button>'}).join(''):
@@ -283,6 +288,7 @@ var locked=false; // the TV computer's keyboard and mouse are locked (from /stat
 var sharing=false; // the TV is showing Share's QR code (from /status, so every phone sees it)
 function poll(){
   fetch('/status?u='+encodeURIComponent(who||'')).then(function(r){return r.json()}).then(function(s){
+    syncWho(s);
     document.getElementById('startrow').style.display=s.chrome?'none':'block';
     chromeUp=!!s.chrome;document.body.classList.toggle('nochrome',!s.chrome);
     // the keyboard/mouse lock, shown only when config.edn turns it on
