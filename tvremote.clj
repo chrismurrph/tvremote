@@ -1975,7 +1975,10 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
 
 (def converting "The ffmpeg at work: {:proc p :rel rel :stopped bool}, or nil." (atom nil))
 
-(defn signal! [proc sig] (p/shell {:continue true} "kill" (str "-" sig) (str (.pid (:proc proc)))))
+(defn signal!
+  "Send sig to the conversion c's ffmpeg, found by its output file (unique)."
+  [c sig]
+  (p/shell {:continue true} "pkill" (str "-" sig) "-f" (java.util.regex.Pattern/quote (str (:part c)))))
 
 (defn next-to-convert []
   (when (and videos-dir photos-dir (.isDirectory ^java.io.File photos-dir))
