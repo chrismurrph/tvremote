@@ -1890,14 +1890,18 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
 (defn ext-of [s] (some-> (re-find #"\.([^./]+)$" (str s)) second str/lower-case))
 
 (defn photo-time
-  "When a photo was taken, ms: from its name (IMG_20260319_173238.jpg), else
+  "When a photo was taken, ms: from its name (IMG_20260319_173238.jpg,
+   2026-03-02-....mp4, or ms since 1970 as in FB_IMG_1712345678901.jpg), else
    the file's own time."
   [^java.io.File f]
-  (or (when-let [[_ d t] (re-find #"(20\d{6})_?(\d{6})" (.getName f))]
-        (try (-> (java.time.LocalDateTime/parse (str d t) (java.time.format.DateTimeFormatter/ofPattern "yyyyMMddHHmmss"))
-                 (.atZone (java.time.ZoneId/systemDefault)) .toInstant .toEpochMilli)
-             (catch Exception _ nil)))
-      (.lastModified f)))
+  (let [n (.getName f)
+        at (fn [s pat] (try (-> (java.time.LocalDateTime/parse s (java.time.format.DateTimeFormatter/ofPattern pat))
+                                (.atZone (java.time.ZoneId/systemDefault)) .toInstant .toEpochMilli)
+                            (catch Exception _ nil)))]
+    (or (when-let [[_ d t] (re-find #"(?<!\d)(20\d{6})_?(\d{6})(?!\d)" n)] (at (str d t) "yyyyMMddHHmmss"))
+        (when-let [[_ d] (re-find #"(?<!\d)(20\d\d-\d\d-\d\d)(?!\d)" n)] (at (str d " 12:00") "yyyy-MM-dd HH:mm"))
+        (when-let [[_ ms] (re-find #"(?<!\d)(1[5-9]\d{11})(?!\d)" n)] (parse-long ms))
+        (.lastModified f))))
 
 (def ph-index "Every photo: [{:rel path-under-photos-dir :t ms}], newest first." (atom nil))
 (def ph-at "The photo showing, by :rel." (atom nil))
