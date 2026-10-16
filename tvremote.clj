@@ -1978,7 +1978,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
 (defn signal!
   "Send sig to the conversion c's ffmpeg, found by its output file (unique)."
   [c sig]
-  (p/shell {:continue true} "pkill" (str "-" sig) "-f" (java.util.regex.Pattern/quote (str (:part c)))))
+  (p/shell {:continue true} "pkill" (str "-" sig) "-f" (str (:part c))))
 
 (defn next-to-convert []
   (when (and videos-dir photos-dir (.isDirectory ^java.io.File photos-dir))
