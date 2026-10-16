@@ -2299,8 +2299,18 @@ showNow();
                 (reply (assoc (json/parse-string (:body res) true) :list-seq (:seq @shared-list)))
                 res)))))
 
+(defn handler-12
+  "handler-11, but a press counts as using the TV before it runs, not after.
+   A slow press (Start Chrome while a video converts) used to finish first, so
+   the conversion kept every core and the press timed out."
+  [req]
+  (when (str/starts-with? (str (:uri req)) "/act/")
+    (reset! last-press (System/currentTimeMillis))
+    (when-let [c @converting] (signal! c "STOP") (swap! converting assoc :stopped true)))
+  (handler-11 req))
+
 (defn -main []
-  (server/run-server handler-11 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-12 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))
