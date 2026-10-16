@@ -2,7 +2,9 @@
 ;; change what you need; anything left out uses the default shown here.
 {;; The names each phone can pick from, so each person gets their own Recent
  ;; lists and places. Leave empty and each phone asks for a name instead.
- :people []                       ; e.g. ["Ann" "Bob"]
+ ;; A name can instead be a map with :reading? true: then only those
+ ;; people get the Reading button (with none marked, everyone does).
+ :people []                       ; e.g. [{:name "Ann" :reading? true} "Bob"]
 
  ;; The port the phone page is served on: http://<this computer>:7700/
  :port 7700

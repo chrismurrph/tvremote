@@ -32,6 +32,12 @@
   (merge {:port 7700 :cdp-port 9222 :people [] :chrome nil :chrome-flags [] :profile-dir nil}
          (try (edn/read-string (slurp (str base-dir "/config.edn"))) (catch Exception _ {}))))
 
+;; A :people entry is a name, or a map {:name "Chris" :reading? true}
+;; (2026-10-16). Reading is offered only to those with :reading?, or to
+;; everyone when no one has it.
+(def people-names (mapv #(if (map? %) (:name %) %) (:people config)))
+(def reading-people (vec (keep #(when (and (map? %) (:reading? %)) (:name %)) (:people config))))
+
 (def port (parse-long (or (System/getenv "TVREMOTE_PORT") (str (:port config)))))
 (def cdp-port (:cdp-port config))
 
@@ -1541,7 +1547,7 @@
    this TV's remote (addr, as the pressing phone saw it), with the names it
    knows; the other is the project on GitHub, for someone's own TV."
   [addr]
-  (let [ppl (seq (:people config))
+  (let [ppl (seq people-names)
         esc #(str/escape (str %) {\< "&lt;" \> "&gt;" \& "&amp;" \' "&#39;" \" "&quot;"})]
     (str "<!doctype html><html><head><meta charset=utf-8><title>Share the TV remote</title>
 <script src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'></script>
@@ -1766,10 +1772,11 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
       res)))
 
 (defn handler-3
-  "handler-2, plus /config: the names the phone offers (the :people setting)."
+  "handler-2, plus /config: the names the phone offers (the :people setting),
+   and who gets Reading (empty: everyone)."
   [req]
   (if (= "/config" (:uri req))
-    (reply {:people (:people config)})
+    (reply {:people people-names :reading reading-people})
     (handler-2 req)))
 
 (def home-screen-files
