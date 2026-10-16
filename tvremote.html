@@ -56,6 +56,7 @@ button.red{background:var(--red);border-color:var(--red)}
 .svc button.on{background:var(--red)}
 .svc button.on.yt{background:#c00}
 .svc button.on.pg{background:#3a6ea5}
+.svc button.on.ph{background:#3f8a4f}
 .noread #svc-page{display:none}
 .svc{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:1fr}
 #svc-photos{display:none}
@@ -112,6 +113,17 @@ button.red{background:var(--red);border-color:var(--red)}
   <button onclick="act(this,'full')">⛶ Full</button>
   <button onclick="act(this,'seek?ms=60000')">1m ⏩</button>
 </div>
+<div id="phpad" style="display:none">
+<div class="pad">
+  <button onclick="act(this,'ph-step?n=-1')">◀ Newer</button>
+  <button class="big" id="phplay" onclick="act(this,'ph-toggle')">⏯</button>
+  <button onclick="act(this,'ph-step?n=1')">Older ▶</button>
+  <button onclick="act(this,'ph-step?n=-1&month=1')">⏮ Month newer</button>
+  <button id="pharch" onclick="phArchive(this)">🗄 Archive</button>
+  <button onclick="act(this,'ph-step?n=1&month=1')">Month older ⏭</button>
+</div>
+<button id="phundo" style="width:100%;margin-top:10px;display:none" onclick="act(this,'ph-undo')">↩ Undo archive</button>
+</div>
 <div id="readpad" style="display:none">
 <div class="pad">
   <button onclick="act(this,'page-scroll?how=up')">▲ Up</button>
@@ -131,7 +143,7 @@ button.red{background:var(--red);border-color:var(--red)}
 </div>
 </div>
 
-<div class="svc"><button id="svc-nf" onclick="switchTo(this,'nf')">Netflix</button><button id="svc-yt" class="yt" onclick="switchTo(this,'yt')">YouTube</button><button id="svc-page" class="pg" onclick="switchTo(this,'page')">Reading</button><button id="svc-photos" onclick="photos(this)">Photos</button></div>
+<div class="svc"><button id="svc-nf" onclick="switchTo(this,'nf')">Netflix</button><button id="svc-yt" class="yt" onclick="switchTo(this,'yt')">YouTube</button><button id="svc-page" class="pg" onclick="switchTo(this,'page')">Reading</button><button id="svc-photos" class="ph" onclick="photos(this)">Photos</button></div>
 <div id="recent"></div>
 
 <div id="reading" style="display:none">
@@ -207,7 +219,17 @@ function showReading(){var r=readers||[],p=photoers||[];document.body.classList.
 // Photos (2026-10-16): only for the names marked :photos? (none marked, no
 // one). Just the button so far; where the photos come from is still to set up.
 var photoers=[];
-function photos(b){msg('Photos aren\'t set up yet');}
+function photos(b){flash(b,'busy');switching=true;msg('Switching the TV…');
+  call('ph-open').then(function(r){switching=false;flash(b,r.ok?'done':'fail',900);
+    if(r.ok){setSvc('ph');setControls('ph');msg('');}else msg(r.error);setTimeout(poll,400);})
+  .catch(function(e){switching=false;flash(b,'fail',900);msg('No answer: '+e);});}
+// Archive moves the photo to the archive folder (never deleted). Two taps,
+// like the ✕ on Recent; Undo puts the last one back.
+function phArchive(b){if(!b.classList.contains('sure')){b.classList.add('sure');b.textContent='Archive it?';
+    b.style.background='var(--red)';b.style.borderColor='var(--red)';
+    setTimeout(function(){b.classList.remove('sure');b.textContent='🗄 Archive';b.style.background='';b.style.borderColor='';},4000);return;}
+  b.classList.remove('sure');b.textContent='🗄 Archive';b.style.background='';b.style.borderColor='';
+  act(b,'ph-archive');}
 // The names come from the server's :people setting; with none set, the phone
 // asks for one. What's kept and sent is a plain lower-case form of the name.
 function slug(n){return String(n).toLowerCase().replace(/[^a-z]/g,'').slice(0,20);}
@@ -283,6 +305,11 @@ function poll(){
     if(s.zoom)document.getElementById('zoomval').textContent=zoomText(s);
     if(s.service==='rl'){now.textContent='🔗 Level '+(level(s)||'?')+(s.link&&s.link.title?' — '+s.link.title:'');sub.textContent='Tap 📖 or a number to go back';return;}
     if(s.service==='page'){now.textContent='📖 Reading'+(s.page&&s.page.title?' — '+s.page.title:'');sub.textContent='';return;}
+    if(s.service==='ph'){var p=s.photo||{};
+      now.textContent=p.total?('🖼 Photos — '+p.n+' of '+p.total+(p.video?' (video)':'')):'🖼 Photos — none';
+      sub.textContent=p.date||'';
+      document.getElementById('phundo').style.display=p.undo?'':'none';
+      document.getElementById('phplay').style.visibility=p.video?'':'hidden';return;}
     if(s.away){now.textContent='TV is on another page (signing in?)';sub.textContent='';return;}
     var watching=/\/watch/.test(s.url||'');
     var name=s.title||[s.picked,s.episode].filter(Boolean).join(' · ');
@@ -314,12 +341,14 @@ function render(r){
 var svc=null,switching=false;
 // One control area: the video buttons while a video is showing (Netflix,
 // YouTube, or a video played from a page), else the Reading buttons.
-function setControls(raw){var reading=(raw==='page'||raw==='rl');
-  document.getElementById('vidpad').style.display=reading?'none':'';
+function setControls(raw){var reading=(raw==='page'||raw==='rl'),ph=(raw==='ph');
+  document.getElementById('phpad').style.display=ph?'':'none';
+  document.getElementById('vidpad').style.display=(reading||ph)?'none':'';
   document.getElementById('readpad').style.display=reading?'':'none';}
 function setSvc(s){var changed=(s!==svc);svc=s;
   ['nf','yt','page'].forEach(function(k){document.getElementById('svc-'+k).classList.toggle('on',s===k);});
-  document.getElementById('find').style.display=(s==='page')?'none':'';
+  document.getElementById('svc-photos').classList.toggle('on',s==='ph');
+  document.getElementById('find').style.display=(s==='page'||s==='ph')?'none':'';
   document.getElementById('reading').style.display=(s==='page')?'':'none';
   document.getElementById('nfbtns').style.display=s==='nf'?'':'none';
   document.getElementById('ytbtns').style.display=s==='yt'?'':'none';

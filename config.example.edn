@@ -32,4 +32,10 @@
  ;; While locked the power button does nothing; typing :unlock-word (letters
  ;; only) on the keyboard unlocks without a phone.
  :input-lock false
- :unlock-word "tvremote"}
+ :unlock-word "tvremote"
+
+ ;; Photos (for the :photos? people): the folder shown, newest first, and
+ ;; where Archive moves a photo to (same path below it; nothing is deleted).
+ ;; Keep the archive outside :photos-dir, on the same disk.
+ :photos-dir nil                  ; e.g. "/mnt/nasrica/Photos"
+ :photos-archive nil}             ; e.g. "/mnt/nasrica/Archived photos"

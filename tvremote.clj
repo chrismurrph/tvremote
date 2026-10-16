@@ -1873,8 +1873,239 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
       (reset! last-press (System/currentTimeMillis)))
     res))
 
+;; ---------------------------------------------------------------- Photos
+;; Photos (2026-10-16): the phone's Photos button (only for :photos? people)
+;; shows the pictures and videos under :photos-dir, one at a time, full screen
+;; in a tab of their own on the TV (/photos/tv). Newest first. Archive takes
+;; one out of the collection by moving it, same path, under :photos-archive:
+;; nothing is ever deleted, and Undo moves the last ones back. Ours is Rica's
+;; phone backup on the Synology, mounted on the TV over SMB.
+
+(def photos-dir (some-> (:photos-dir config) io/file .getCanonicalFile))
+(def photos-archive (some-> (:photos-archive config) io/file))
+
+(def photo-exts #{"jpg" "jpeg" "png" "gif" "webp" "mp4" "mov" "webm" "3gp"})
+(def video-exts #{"mp4" "mov" "webm" "3gp"})
+
+(defn ext-of [s] (some-> (re-find #"\.([^./]+)$" (str s)) second str/lower-case))
+
+(defn photo-time
+  "When a photo was taken, ms: from its name (IMG_20260319_173238.jpg), else
+   the file's own time."
+  [^java.io.File f]
+  (or (when-let [[_ d t] (re-find #"(20\d{6})_?(\d{6})" (.getName f))]
+        (try (-> (java.time.LocalDateTime/parse (str d t) (java.time.format.DateTimeFormatter/ofPattern "yyyyMMddHHmmss"))
+                 (.atZone (java.time.ZoneId/systemDefault)) .toInstant .toEpochMilli)
+             (catch Exception _ nil)))
+      (.lastModified f)))
+
+(def ph-index "Every photo: [{:rel path-under-photos-dir :t ms}], newest first." (atom nil))
+(def ph-at "The photo showing, by :rel." (atom nil))
+(def ph-id "The photos tab's target id." (atom nil))
+
+(defn index-photos!
+  "Walk photos-dir (skipping Synology's @eaDir thumbnails and dot folders)."
+  []
+  (let [root (.getPath photos-dir)
+        fs   (->> (file-seq photos-dir)
+                  (remove #(some (fn [part] (or (str/starts-with? part "@") (str/starts-with? part ".")))
+                                 (str/split (subs (.getPath ^java.io.File %) (count root)) #"/")))
+                  (filter #(and (.isFile ^java.io.File %) (photo-exts (ext-of (.getName ^java.io.File %))))))]
+    (reset! ph-index (vec (sort-by (comp - :t)
+                                   (for [^java.io.File f fs]
+                                     {:rel (subs (.getPath f) (inc (count root))) :t (photo-time f)}))))))
+
+(defn ph-pos [] (or (first (keep-indexed #(when (= @ph-at (:rel %2)) %1) @ph-index)) 0))
+
+(defn ph-now
+  "What the TV shows and the phone says: the photo at ph-at, and the next
+   one for the TV to fetch ahead."
+  []
+  (let [ix @ph-index i (ph-pos) p (get ix i)]
+    (if-not p
+      {:total 0}
+      {:rel (:rel p) :n (inc i) :total (count ix)
+       :video (boolean (video-exts (ext-of (:rel p))))
+       :date (.format (.atZone (java.time.Instant/ofEpochMilli (long (:t p))) (java.time.ZoneId/systemDefault))
+                      (java.time.format.DateTimeFormatter/ofPattern "EEE d MMM yyyy, h:mm a"))
+       :next (:rel (get ix (inc i)))
+       :undo (boolean (seq (:ph-archived (load-state))))})))
+
+(defn ph-target []
+  (when-let [id @ph-id] (first (filter #(= id (:id %)) (targets)))))
+
+(defn ph-show!
+  "Make the TV's photos tab show ph-now (it fetches it), and keep the place."
+  []
+  (update-state! #(assoc % :ph-at @ph-at))
+  (when-let [t (ph-target)] (try (js t "window.showNow&&showNow()") (catch Exception _ nil))))
+
+(defn ph-open!
+  "Switch the TV to Photos: pause the players, then the photos tab in front
+   (opened if it isn't there)."
+  []
+  (cond
+    (nil? photos-dir) {:ok false :error "Photos aren't set up yet (:photos-dir)"}
+    (not (.isDirectory ^java.io.File photos-dir)) {:ok false :error "Can't reach the photos (is the Synology on?)"}
+    :else
+    (do (pause-all)
+        (when (or (nil? @ph-index) (empty? @ph-index)) (index-photos!))
+        (reset! service "ph")
+        (if-let [t (ph-target)]
+          (cdp t "Page.bringToFront")
+          (let [r (http/put (str "http://127.0.0.1:" cdp-port "/json/new?"
+                                 (java.net.URLEncoder/encode (str "http://127.0.0.1:" port "/photos/tv") "UTF-8"))
+                            {:throw false})
+                t (json/parse-string (:body r) true)]
+            (reset! ph-id (:id t))
+            (update-state! #(assoc % :ph-id (:id t)))
+            (http/get (str "http://127.0.0.1:" cdp-port "/json/activate/" (:id t)) {:throw false})))
+        {:ok true :count (count @ph-index)})))
+
+(defn ph-step!
+  "Move by n photos (+ older, - newer), or by a month when month is true."
+  [n month?]
+  (let [ix @ph-index i (ph-pos)]
+    (when (seq ix)
+      (let [j (if month?
+                (let [cal #(let [d (.atZone (java.time.Instant/ofEpochMilli (long %)) (java.time.ZoneId/systemDefault))]
+                             (+ (* 12 (.getYear d)) (.getMonthValue d)))
+                      m (cal (:t (ix i)))]
+                  (if (pos? n)
+                    (or (first (filter #(< (cal (:t (ix %))) m) (range i (count ix)))) (dec (count ix)))
+                    ;; the first photo of the next newer month
+                    (let [newer (filter #(> (cal (:t (ix %))) m) (range i -1 -1))]
+                      (if-let [k (first newer)]
+                        (last (take-while #(= (cal (:t (ix %))) (cal (:t (ix k)))) (range k -1 -1)))
+                        0))))
+                (max 0 (min (dec (count ix)) (+ i n))))]
+        (reset! ph-at (:rel (ix j)))
+        (ph-show!)))
+    {:ok (boolean (seq ix))}))
+
+(defn ph-file ^java.io.File [rel]
+  (let [f (.getCanonicalFile (io/file photos-dir rel))]
+    (when (str/starts-with? (.getPath f) (str (.getPath photos-dir) "/")) f)))
+
+(defn ph-archive!
+  "Move the photo showing to photos-archive, same path below it; the next
+   older one shows. Recorded in state.edn :ph-archived (last 50, newest
+   first), for Undo."
+  []
+  (let [rel @ph-at f (some-> rel ph-file)]
+    (cond
+      (nil? photos-archive) {:ok false :error "No archive folder set (:photos-archive)"}
+      (not (and f (.isFile f))) {:ok false :error "That photo isn't there any more"}
+      :else
+      (let [to (io/file photos-archive rel) i (ph-pos)]
+        (.mkdirs (.getParentFile to))
+        (fs/move f to)
+        (println "photos: archived" rel)
+        (update-state! #(update % :ph-archived (fn [a] (vec (take 50 (cons rel a))))))
+        (swap! ph-index (fn [ix] (vec (remove #(= rel (:rel %)) ix))))
+        (reset! ph-at (:rel (get @ph-index (min i (dec (count @ph-index))))))
+        (ph-show!)
+        {:ok true}))))
+
+(defn ph-undo!
+  "Move the last archived photo back, and show it."
+  []
+  (if-let [rel (first (:ph-archived (load-state)))]
+    (let [from (io/file photos-archive rel) to (io/file photos-dir rel)]
+      (if-not (.isFile from)
+        (do (update-state! #(update % :ph-archived (comp vec rest)))
+            {:ok false :error "It isn't in the archive any more"})
+        (do (.mkdirs (.getParentFile to))
+            (fs/move from to)
+            (println "photos: put back" rel)
+            (update-state! #(update % :ph-archived (comp vec rest)))
+            (swap! ph-index (fn [ix] (vec (sort-by (comp - :t) (conj ix {:rel rel :t (photo-time to)})))))
+            (reset! ph-at rel)
+            (ph-show!)
+            {:ok true})))
+    {:ok false :error "Nothing to undo"}))
+
+(defn ph-toggle!
+  "Play or pause a video showing on the photos tab."
+  []
+  (if-let [t (ph-target)]
+    {:ok (boolean (js t "(()=>{const v=document.querySelector('video');if(!v)return false;v.paused?v.play():v.pause();return true})()"))}
+    {:ok false :error "Photos aren't showing on the TV"}))
+
+(defn serve-file
+  "f, honouring a Range request (videos need it to start and to seek)."
+  [^java.io.File f req]
+  (let [len  (.length f)
+        type (case (ext-of (.getName f))
+               ("jpg" "jpeg") "image/jpeg" "png" "image/png" "gif" "image/gif" "webp" "image/webp"
+               "mp4" "video/mp4" "mov" "video/quicktime" "webm" "video/webm" "3gp" "video/3gpp"
+               "application/octet-stream")
+        [_ a b] (re-find #"bytes=(\d*)-(\d*)" (str (get-in req [:headers "range"])))]
+    (if-not a
+      {:status 200 :headers {"Content-Type" type "Accept-Ranges" "bytes" "Content-Length" (str len)} :body f}
+      (let [start (if (seq a) (parse-long a) (max 0 (- len (parse-long b))))
+            end   (min (dec len) (if (and (seq a) (seq b)) (parse-long b) (+ start (* 4 1024 1024) -1)))
+            buf   (byte-array (inc (- end start)))]
+        (with-open [r (java.io.RandomAccessFile. f "r")]
+          (.seek r start) (.readFully r buf))
+        {:status 206
+         :headers {"Content-Type" type "Accept-Ranges" "bytes"
+                   "Content-Range" (str "bytes " start "-" end "/" len)}
+         :body (java.io.ByteArrayInputStream. buf)}))))
+
+(def photos-tv-html
+  "<!doctype html><html><head><meta charset=utf-8><title>Photos</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:none}
+#box{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#box img,#box video{max-width:100vw;max-height:100vh;object-fit:contain}
+#cap{position:fixed;left:24px;bottom:18px;color:#ccc;font:22px system-ui,sans-serif;text-shadow:0 0 6px #000}
+#none{color:#888;font:32px system-ui,sans-serif}</style></head><body>
+<div id=box></div><div id=cap></div>
+<script>
+var shown=null,ahead=null;
+function src(rel){return '/photos/file?p='+encodeURIComponent(rel)}
+function showNow(){return fetch('/photos/now').then(r=>r.json()).then(function(n){
+  var box=document.getElementById('box');
+  if(!n.rel){box.innerHTML='<div id=none>No photos</div>';document.getElementById('cap').textContent='';shown=null;return true}
+  if(n.rel!==shown){shown=n.rel;
+    var el=document.createElement(n.video?'video':'img');el.src=src(n.rel);
+    if(n.video){el.autoplay=true;el.controls=false;el.playsInline=true}
+    box.replaceChildren(el)}
+  document.getElementById('cap').textContent=n.date+'  ·  '+n.n+' of '+n.total;
+  if(n.next&&!/\\.(mp4|mov|webm|3gp)$/i.test(n.next)){ahead=new Image();ahead.src=src(n.next)}
+  return true})}
+document.addEventListener('visibilitychange',function(){var v=document.querySelector('video');if(v&&document.hidden)v.pause()});
+showNow();
+</script></body></html>")
+
+(defn handler-9
+  "handler-8, plus Photos: the TV's photos page and its files, and the phone's
+   ph- presses; /status says \"ph\" while Photos is the current service."
+  [req]
+  (let [uri (:uri req) q (query req)
+        ph  (fn [r] (reset! last-press (System/currentTimeMillis)) (reply r))]
+    (case uri
+      "/photos/tv"   {:status 200 :headers {"Content-Type" "text/html; charset=utf-8"} :body photos-tv-html}
+      "/photos/now"  (reply (ph-now))
+      "/photos/file" (if-let [f (and photos-dir (ph-file (:p q)))]
+                       (if (.isFile f) (serve-file f req) {:status 404 :body "not found"})
+                       {:status 404 :body "not found"})
+      "/act/ph-open"    (ph (ph-open!))
+      "/act/ph-step"    (ph (ph-step! (or (parse-long (str (:n q))) 1) (= "1" (:month q))))
+      "/act/ph-archive" (ph (ph-archive!))
+      "/act/ph-undo"    (ph (ph-undo!))
+      "/act/ph-toggle"  (ph (ph-toggle!))
+      (let [res (handler-8 req)]
+        (if (and (= "/status" uri) (= "ph" @service) (= 200 (:status res)))
+          (let [s (json/parse-string (:body res) true)]
+            (if (:chrome s)
+              (reply (-> s (dissoc :playing :time :duration :title :url :episode :show :away :profiles)
+                         (assoc :service "ph" :photo (ph-now))))
+              res))
+          res)))))
+
 (defn -main []
-  (server/run-server handler-8 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-9 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))
@@ -1885,6 +2116,8 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
   (reset! rv-id (:rv-id (load-state)))
   (reset! rl-id (:rl-id (load-state)))
   (reset! page-id (:page-id (load-state)))
+  (reset! ph-id (:ph-id (load-state)))
+  (reset! ph-at (:ph-at (load-state)))
   (when (and input-lock? (:input-locked (load-state))) (lock-input!))
   (when input-lock? (watch-input!))
   (try (adopt-front-tab!) (catch Exception e (println "adopt-front-tab:" (ex-message e))))
