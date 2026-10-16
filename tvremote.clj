@@ -1980,9 +1980,13 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
   [c sig]
   (p/shell {:continue true} "pkill" (str "-" sig) "-f" (str (:part c))))
 
+(def indexed-at "When the conversion last re-walked the photos, to catch new files." (atom 0))
+
 (defn next-to-convert []
   (when (and videos-dir photos-dir (.isDirectory ^java.io.File photos-dir))
-    (when (nil? @ph-index) (index-photos!))
+    (when (or (nil? @ph-index) (> (- (System/currentTimeMillis) @indexed-at) (* 10 60 1000)))
+      (index-photos!)
+      (reset! indexed-at (System/currentTimeMillis)))
     (first (filter #(and (video-exts (ext-of %)) (not (get-in @video-codecs [:failed %])) (unconverted? %))
                    (map :rel @ph-index)))))
 
