@@ -1998,8 +1998,8 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
     (reset! converting
             {:rel rel :part part :out out :stopped false
              :proc (p/process {:err :string :out :string}
-                              "nice" "-n" "19" "ffmpeg" "-v" "error" "-y" "-i" (str (io/file photos-dir rel))
-                              "-c:v" "libx264" "-preset" "veryfast" "-crf" "22" "-pix_fmt" "yuv420p"
+                              "nice" "-n" "19" "ffmpeg" "-v" "error" "-y" "-threads" "1" "-i" (str (io/file photos-dir rel))
+                              "-threads" "1" "-c:v" "libx264" "-preset" "veryfast" "-crf" "22" "-pix_fmt" "yuv420p"
                               "-c:a" "aac" "-b:a" "128k" "-movflags" "+faststart" (str part))})))
 
 (defn convert-tick!
