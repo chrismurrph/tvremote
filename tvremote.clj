@@ -2082,6 +2082,21 @@ document.addEventListener('visibilitychange',function(){var v=document.querySele
 showNow();
 </script></body></html>")
 
+;; A new name on a phone (2026-10-16): the TV goes to what that person used
+;; last (state.edn :last-svc), loaded with their own place, as Take over does,
+;; so the phone's buttons are theirs. Nothing used yet: nothing changes.
+
+(defn who!
+  "Switch the TV to user's last service, with their last show, video, page
+   or photo."
+  [user]
+  (let [svc (and user (get-in (load-state) [:last-svc user]))]
+    (println "who:" user "->" (or svc "nothing yet"))
+    (cond
+      (nil? svc)  {:ok true}
+      (= "ph" svc) (ph-open!)
+      :else        (switch-service-2! svc user))))
+
 (defn handler-9
   "handler-8, plus Photos: the TV's photos page and its files, and the phone's
    ph- presses; /status says \"ph\" while Photos is the current service."
@@ -2094,7 +2109,11 @@ showNow();
       "/photos/file" (if-let [f (and photos-dir (ph-file (:p q)))]
                        (if (.isFile f) (serve-file f req) {:status 404 :body "not found"})
                        {:status 404 :body "not found"})
-      "/act/ph-open"    (ph (ph-open!))
+      "/act/ph-open"    (ph (let [r (ph-open!)]
+                              (when (and (:ok r) (user-of q))
+                                (update-state! #(assoc-in % [:last-svc (user-of q)] "ph")))
+                              r))
+      "/act/who"        (ph (who! (user-of q)))
       "/act/ph-step"    (ph (ph-step! (or (parse-long (str (:n q))) 1) (= "1" (:month q))))
       "/act/ph-archive" (ph (ph-archive!))
       "/act/ph-undo"    (ph (ph-undo!))

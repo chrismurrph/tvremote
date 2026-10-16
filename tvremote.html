@@ -233,7 +233,11 @@ function phArchive(b){if(!b.classList.contains('sure')){b.classList.add('sure');
 // The names come from the server's :people setting; with none set, the phone
 // asks for one. What's kept and sent is a plain lower-case form of the name.
 function slug(n){return String(n).toLowerCase().replace(/[^a-z]/g,'').slice(0,20);}
-function setWho(n){n=slug(n);if(!n)return;who=n;try{localStorage.setItem('tvremote-who',n);}catch(e){}showWho();}
+function setWho(n){n=slug(n);if(!n)return;var was=who;who=n;try{localStorage.setItem('tvremote-who',n);}catch(e){}showWho();
+  // a new name: the TV goes to what they used last (2026-10-16)
+  if(n!==was&&chromeUp){msg('Switching the TV to '+n.charAt(0).toUpperCase()+n.slice(1)+'\'s last…');
+    call('who').then(function(r){msg(r.ok?(r.loaded?('Loaded '+r.loaded+' — paused, ready to play'):''):r.error);recentKey='';setTimeout(poll,400);})
+    .catch(function(e){msg('No answer: '+e);});}}
 function loadPeople(){fetch('/config').then(function(r){return r.json()}).then(function(c){
   var box=document.getElementById('whobtns'),ps=c.people||[];readers=c.reading||[];photoers=c.photos||[];showReading();
   box.innerHTML=ps.length?ps.map(function(p){return '<button data-n="'+esc(p)+'" onclick="setWho(this.dataset.n)">'+esc(p)+'</button>'}).join(''):
