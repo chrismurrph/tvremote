@@ -1919,6 +1919,114 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                                    (for [^java.io.File f fs]
                                      {:rel (subs (.getPath f) (inc (count root))) :t (photo-time f)}))))))
 
+(defn ph-file ^java.io.File [rel]
+  (let [f (.getCanonicalFile (io/file photos-dir rel))]
+    (when (str/starts-with? (.getPath f) (str (.getPath photos-dir) "/")) f)))
+
+;; Video copies the TV can play (2026-10-16): most of Rica's phone videos are
+;; HEVC, which this Chrome can't show (2014 graphics, no HEVC; sound only).
+;; The server makes an H.264 copy of each, same path under :videos-dir, and
+;; Photos plays the copy. It works only while the TV is idle: nothing making
+;; sound and no phone press or TV keyboard/mouse use for 10 minutes. The
+;; moment that changes, ffmpeg is frozen (SIGSTOP), and it carries on (SIGCONT)
+;; once idle again. Lowest priority too. Newest first. A video's codec is
+;; found once with ffprobe and kept in video-codecs.edn.
+
+(def videos-dir (some-> (:videos-dir config) io/file))
+(def codecs-file (str base-dir "/video-codecs.edn"))
+(def video-codecs "{rel codec} for each video probed." (atom (try (read-string (slurp codecs-file)) (catch Exception _ {}))))
+
+(defn video-codec [rel]
+  (or (get @video-codecs rel)
+      (let [c (try (str/trim (:out (p/shell {:out :string :err :string :continue true}
+                                            "ffprobe" "-v" "error" "-select_streams" "v:0"
+                                            "-show_entries" "stream=codec_name" "-of" "csv=p=0"
+                                            (str (io/file photos-dir rel)))))
+                   (catch Exception _ ""))
+            c (first (str/split c #"[,\s]"))]
+        (when (seq c)
+          (swap! video-codecs assoc rel c)
+          (spit codecs-file (pr-str @video-codecs)))
+        (not-empty c))))
+
+(defn video-copy ^java.io.File [rel] (when videos-dir (io/file videos-dir rel)))
+
+(defn needs-copy? [rel] (not= "h264" (video-codec rel)))
+
+(defn playable-file
+  "The file to send for rel: a video's H.264 copy when it has one."
+  ^java.io.File [rel]
+  (let [c (video-copy rel)]
+    (if (and c (video-exts (ext-of rel)) (.isFile c)) c (ph-file rel))))
+
+(defn unconverted? [rel]
+  (and (video-exts (ext-of rel)) (needs-copy? rel)
+       (not (some-> (video-copy rel) .isFile))))
+
+(defn tv-idle?
+  "Nothing making sound, and no press or TV keyboard/mouse use for 10 min."
+  []
+  (let [quiet (try (str/blank? (:out (p/shell {:out :string :err :string :continue true
+                                               :extra-env {"XDG_RUNTIME_DIR" runtime-dir}}
+                                              "pactl" "list" "short" "sink-inputs")))
+                   (catch Exception _ false))
+        ago   (- (System/currentTimeMillis) (max (or @last-press 0) (or @last-touch 0)))]
+    (and quiet (> ago (* 10 60 1000)))))
+
+(def converting "The ffmpeg at work: {:proc p :rel rel :stopped bool}, or nil." (atom nil))
+
+(defn signal! [proc sig] (p/shell {:continue true} "kill" (str "-" sig) (str (.pid (:proc proc)))))
+
+(defn next-to-convert []
+  (when (and videos-dir photos-dir (.isDirectory ^java.io.File photos-dir))
+    (when (nil? @ph-index) (index-photos!))
+    (first (filter #(and (video-exts (ext-of %)) (not (get-in @video-codecs [:failed %])) (unconverted? %))
+                   (map :rel @ph-index)))))
+
+(defn start-convert! [rel]
+  (let [out  (video-copy rel)
+        part (io/file (str (.getPath out) ".part.mp4"))]
+    (.mkdirs (.getParentFile out))
+    (println "videos: converting" rel)
+    (reset! converting
+            {:rel rel :part part :out out :stopped false
+             :proc (p/process {:err :string :out :string}
+                              "nice" "-n" "19" "ffmpeg" "-v" "error" "-y" "-i" (str (io/file photos-dir rel))
+                              "-c:v" "libx264" "-preset" "veryfast" "-crf" "22" "-pix_fmt" "yuv420p"
+                              "-c:a" "aac" "-b:a" "128k" "-movflags" "+faststart" (str part))})))
+
+(defn convert-tick!
+  "Every few seconds: freeze, thaw, finish or start a conversion."
+  []
+  (let [c @converting idle (tv-idle?)]
+    (cond
+      (and c (not (p/alive? (:proc c))))
+      (let [r @(:proc c)]
+        (reset! converting nil)
+        (if (zero? (:exit r))
+          (do (fs/move (:part c) (:out c) {:replace-existing true})
+              (println "videos: done" (:rel c)))
+          (do (fs/delete-if-exists (:part c))
+              (swap! video-codecs assoc-in [:failed (:rel c)] true)
+              (spit codecs-file (pr-str @video-codecs))
+              (println "videos: failed" (:rel c) (str/trim (str (:err r)))))))
+      (and c (not idle) (not (:stopped c))) (do (signal! c "STOP") (swap! converting assoc :stopped true))
+      (and c idle (:stopped c))             (do (signal! c "CONT") (swap! converting assoc :stopped false))
+      (and (nil? c) idle)                   (some-> (next-to-convert) start-convert!))))
+
+(defn convert-videos!
+  "The converter's own loop, for good. Leftover .part files from a restart
+   are removed first (systemd ends ffmpeg with the server)."
+  []
+  (future
+    (when videos-dir
+      (doseq [f (file-seq videos-dir) :when (str/ends-with? (.getName ^java.io.File f) ".part.mp4")]
+        (fs/delete-if-exists f))
+      (loop []
+        (Thread/sleep 3000)
+        (try (convert-tick!) (catch Exception e (println "videos:" (ex-message e))))
+        (recur)))))
+
 (defn ph-pos [] (or (first (keep-indexed #(when (= @ph-at (:rel %2)) %1) @ph-index)) 0))
 
 (defn ph-now
@@ -1930,6 +2038,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
       {:total 0}
       {:rel (:rel p) :n (inc i) :total (count ix)
        :video (boolean (video-exts (ext-of (:rel p))))
+       :unconverted (boolean (and (video-exts (ext-of (:rel p))) (unconverted? (:rel p))))
        :date (.format (.atZone (java.time.Instant/ofEpochMilli (long (:t p))) (java.time.ZoneId/systemDefault))
                       (java.time.format.DateTimeFormatter/ofPattern "EEE d MMM yyyy, h:mm a"))
        :next (:rel (get ix (inc i)))
@@ -1986,10 +2095,6 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         (reset! ph-at (:rel (ix j)))
         (ph-show!)))
     {:ok (boolean (seq ix))}))
-
-(defn ph-file ^java.io.File [rel]
-  (let [f (.getCanonicalFile (io/file photos-dir rel))]
-    (when (str/starts-with? (.getPath f) (str (.getPath photos-dir) "/")) f)))
 
 (defn ph-archive!
   "Move the photo showing to photos-archive, same path below it; the next
@@ -2063,7 +2168,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
 #box{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
 #box img,#box video{max-width:100vw;max-height:100vh;object-fit:contain}
 #cap{position:fixed;left:24px;bottom:18px;color:#ccc;font:22px system-ui,sans-serif;text-shadow:0 0 6px #000}
-#none{color:#888;font:32px system-ui,sans-serif}</style></head><body>
+#none{color:#888;font:32px system-ui,sans-serif;text-align:center}#none small{font-size:22px}</style></head><body>
 <div id=box></div><div id=cap></div>
 <script>
 var shown=null,ahead=null;
@@ -2071,10 +2176,13 @@ function src(rel){return '/photos/file?p='+encodeURIComponent(rel)}
 function showNow(){return fetch('/photos/now').then(r=>r.json()).then(function(n){
   var box=document.getElementById('box');
   if(!n.rel){box.innerHTML='<div id=none>No photos</div>';document.getElementById('cap').textContent='';shown=null;return true}
-  if(n.rel!==shown){shown=n.rel;
+  var key=n.rel+(n.unconverted?'|u':'');
+  if(key!==shown){shown=key;
+    if(n.unconverted){box.innerHTML='<div id=none>This video isn’t ready yet<br><small>The TV converts videos while it’s idle</small></div>';}
+    else{
     var el=document.createElement(n.video?'video':'img');el.src=src(n.rel);
     if(n.video){el.autoplay=true;el.controls=false;el.playsInline=true}
-    box.replaceChildren(el)}
+    box.replaceChildren(el)}}
   document.getElementById('cap').textContent=n.date+'  ·  '+n.n+' of '+n.total;
   if(n.next&&!/\\.(mp4|mov|webm|3gp)$/i.test(n.next)){ahead=new Image();ahead.src=src(n.next)}
   return true})}
@@ -2106,7 +2214,7 @@ showNow();
     (case uri
       "/photos/tv"   {:status 200 :headers {"Content-Type" "text/html; charset=utf-8"} :body photos-tv-html}
       "/photos/now"  (reply (ph-now))
-      "/photos/file" (if-let [f (and photos-dir (ph-file (:p q)))]
+      "/photos/file" (if-let [f (and photos-dir (ph-file (:p q)) (playable-file (:p q)))]
                        (if (.isFile f) (serve-file f req) {:status 404 :body "not found"})
                        {:status 404 :body "not found"})
       "/act/ph-open"    (ph (let [r (ph-open!)]
@@ -2201,6 +2309,7 @@ showNow();
   (reset! tv-who (:tv-who (load-state)))
   (when (and input-lock? (:input-locked (load-state))) (lock-input!))
   (when input-lock? (watch-input!))
+  (convert-videos!)
   (try (adopt-front-tab!) (catch Exception e (println "adopt-front-tab:" (ex-message e))))
   ;; no current person yet: the owner of what's showing
   (when-not @tv-who (reset! tv-who (get @owner (get {"rv" "page" "rl" "page"} @service @service))))

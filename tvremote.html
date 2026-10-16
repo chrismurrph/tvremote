@@ -317,7 +317,7 @@ function poll(){
     if(s.service==='rl'){now.textContent='🔗 Level '+(level(s)||'?')+(s.link&&s.link.title?' — '+s.link.title:'');sub.textContent='Tap 📖 or a number to go back';return;}
     if(s.service==='page'){now.textContent='📖 Reading'+(s.page&&s.page.title?' — '+s.page.title:'');sub.textContent='';return;}
     if(s.service==='ph'){var p=s.photo||{};
-      now.textContent=p.total?('🖼 Photos — '+p.n+' of '+p.total+(p.video?' (video)':'')):'🖼 Photos — none';
+      now.textContent=p.total?('🖼 Photos — '+p.n+' of '+p.total+(p.video?(p.unconverted?' (video, not ready yet)':' (video)'):'')):'🖼 Photos — none';
       sub.textContent=p.date||'';
       document.getElementById('phundo').style.display=p.undo?'':'none';
       document.getElementById('phplay').style.visibility=p.video?'':'hidden';return;}
