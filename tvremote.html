@@ -371,8 +371,15 @@ function setLocal(s){var el=document.getElementById('local'),t='';s_svc=s.servic
   if(at)t='⌨ Someone used the TV\'s keyboard/mouse at '+at;
   else if(s['by-itself'])t='▶ '+(s.service==='nf'?'Netflix':'YouTube')+' moved on to this by itself';
   // Keep this: make a video no phone opened the holder's (into their Recent)
+  // Still watching? (2026-10-15): Netflix's second pause with nobody about
+  // waits for a phone; it comes before the other lines.
+  if(s['nf-still']){var sk='still';if(sk===localKey)return;localKey=sk;
+    el.innerHTML='⏸ Netflix is asking "Still watching?" <button id="stillbtn" onclick="stillWatching(this)">Continue</button>';return;}
   var k=t&&s.keepable,key=t+'|'+(k?1:0);if(key===localKey)return;localKey=key;
   el.innerHTML=esc(t)+(k?' <button id="keepbtn" onclick="keepThis(this)">Keep this</button>':'');}
+function stillWatching(b){flash(b,'busy');call('nf-continue').then(function(r){
+    flash(b,r.ok?'done':'fail',900);if(!r.ok)msg(r.error);setTimeout(poll,400);})
+  .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
 // Shut down (2026-10-15): the media machine's power button is set to do
 // nothing, so this is the tidy way off. Two taps, like the ✕ on Recent.
 function shutDown(b){if(!b.classList.contains('sure')){b.classList.add('sure');b.textContent='Really shut it down?';

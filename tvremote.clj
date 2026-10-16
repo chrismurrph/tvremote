@@ -1432,16 +1432,65 @@
       (Thread/sleep 30000)
       (recur))))
 
+;; Still watching? (2026-10-15): after a while with nobody touching anything,
+;; Netflix pauses with "Are you still watching?" and a Continue watching
+;; button. The tick presses it the first time; the next time, with no phone
+;; press or TV keyboard/mouse use since, it is left up and the phone shows it
+;; with a Continue button instead. So a show never stops on the first, but
+;; also never plays all night to an empty room. The button is found by its
+;; text (or Netflix's data-uia); the log says what it was each time.
+
+(def nf-still-js
+  "(press=>{const b=document.querySelector('[data-uia=\"interrupt-autoplay-continue\"]')
+     ||[...document.querySelectorAll('button')].find(e=>e.offsetParent&&/^\\s*continue (watching|playing)/i.test(e.innerText));
+   if(!b)return null;const r={text:b.innerText,uia:b.getAttribute('data-uia')};
+   if(press)b.click();return r})(%s)")
+
+(def nf-still
+  "Netflix's Still watching? pause: :up while it waits for a phone, :auto-at
+   when the tick last pressed Continue itself, ms."
+  (atom {}))
+
+(defn nf-watch-tab []
+  (first (filter #(and (on-site? "netflix.com" %) (str/includes? (str (:url %)) "/watch"))
+                 (targets))))
+
+(defn nf-continue!
+  "Press Netflix's Continue watching (the phone's button)."
+  []
+  (if-let [seen (some-> (nf-watch-tab) (js (format nf-still-js "true")))]
+    (do (swap! nf-still assoc :up false) {:ok true :pressed (:text seen)})
+    {:ok false :error "Netflix isn't asking now"}))
+
+(defn nf-still-watching!
+  "For the tick: deal with Netflix's Still watching? pause, if it's up."
+  []
+  (let [n    (nf-watch-tab)
+        seen (when n (js n (format nf-still-js "false")))
+        {:keys [auto-at up]} @nf-still
+        since (max (or @last-press 0) (or @last-touch 0))]
+    (cond
+      (not seen) (when up (swap! nf-still assoc :up false))
+      (or (nil? auto-at) (> since auto-at))
+      (do (js n (format nf-still-js "true"))
+          (swap! nf-still assoc :up false :auto-at (System/currentTimeMillis))
+          (println "Netflix still watching?: pressed" (pr-str seen) "itself"))
+      (not up)
+      (do (swap! nf-still assoc :up true)
+          (println "Netflix still watching?: second time with nobody about, left for a phone" (pr-str seen))))))
+
 (defn local-status
   "For /status: :touched-ago (ms since the keyboard or mouse was used, when
    that was after the last phone press); :by-itself when YouTube or Netflix
    has moved off what a phone opened; :keepable when what's playing there is
-   no phone's (Keep this)."
+   no phone's (Keep this); :nf-still when Netflix's Still watching? waits for
+   a phone."
   [st]
   (let [t @last-touch now (System/currentTimeMillis)
         id (some->> (:url st) (re-find #"[?&]v=([\w-]{11})") second)
         k  (get-in @opened ["yt" :key])]
     (cond-> {}
+      (:up @nf-still) (assoc :nf-still true)
       (and t (or (nil? @last-press) (> t @last-press))) (assoc :touched-ago (- now t))
       (and (= "yt" (:service st)) id k (not= id k)) (assoc :by-itself true)
       (and (= "yt" (:service st)) id (not= id k))   (assoc :keepable true)
@@ -1588,6 +1637,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         "forget"     (forget! (:svc q) (user-of q) (:key q))
         "keep"       (keep! (:svc q) (user-of q))
         "shutdown"   (shut-down!)
+        "nf-continue" (nf-continue!)
         "tabs"       {:ok true :tabs (user-tabs)}
         "share"      (share! (:host q))
         "share-off"  (share-off!)
@@ -1829,12 +1879,14 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
   (when (and input-lock? (:input-locked (load-state))) (lock-input!))
   (when input-lock? (watch-input!))
   (try (adopt-front-tab!) (catch Exception e (println "adopt-front-tab:" (ex-message e))))
-  ;; The one tick (2026-10-15): every 3s close YouTube's chat replay, and
-  ;; every 5th tick (15s) save everyone's place. One loop, not one per job.
+  ;; The one tick (2026-10-15): every 3s close YouTube's chat replay and deal
+  ;; with Netflix's Still watching?, and every 5th tick (15s) save everyone's
+  ;; place. One loop, not one per job.
   (future (loop [n 1]
             (Thread/sleep 3000)
             (when (chrome-up?)
               (try (hide-yt-chat!) (catch Exception _ nil))
+              (try (nf-still-watching!) (catch Exception e (println "nf-still-watching:" (ex-message e))))
               (when (zero? (mod n 5))
                 (try (record-watching-2!)
                      (catch Exception e (println "record-watching:" (ex-message e))))))
