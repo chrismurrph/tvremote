@@ -2148,8 +2148,44 @@ showNow();
         (reply (assoc (json/parse-string (:body res) true) :who @tv-who))
         res))))
 
+;; Shared lists (2026-10-16): what one phone looks up shows on every phone.
+;; The last list asked for (search or browse results, a page's videos or
+;; links, the TV's tabs) is kept here with a number; /status gives out the
+;; number, and a phone that hasn't drawn that one fetches /list.
+
+(def shared-list "The last list: {:seq n :kind k :svc s :r reply}." (atom {:seq 0}))
+
+(def list-kinds
+  {"browse" "results" "shows" "results" "movies" "results" "genre" "results" "search" "results"
+   "yt-home" "results" "yt-subs" "results" "yt-history" "results" "yt-search" "results"
+   "page-videos" "videos" "page-links" "links" "tabs" "tabs"})
+
+(defn handler-11
+  "handler-10, plus shared lists."
+  [req]
+  (let [uri    (:uri req)
+        action (when (str/starts-with? uri "/act/") (subs uri 5))
+        kind   (get list-kinds action)]
+    (cond
+      (= "/list" uri) (reply @shared-list)
+      kind (let [res (handler-10 req)
+                 r   (try (json/parse-string (:body res) true) (catch Exception _ nil))]
+             (if (:ok r)
+               (let [l (swap! shared-list (fn [{n :seq}]
+                                            {:seq (inc n) :kind kind :r r
+                                             :svc (cond (str/starts-with? action "yt-") "yt"
+                                                        (= "results" kind) "nf"
+                                                        (= "tabs" kind) nil
+                                                        :else "page")}))]
+                 (reply (assoc r :list-seq (:seq l))))
+               res))
+      :else (let [res (handler-10 req)]
+              (if (and (= "/status" uri) (= 200 (:status res)))
+                (reply (assoc (json/parse-string (:body res) true) :list-seq (:seq @shared-list)))
+                res)))))
+
 (defn -main []
-  (server/run-server handler-10 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-11 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))

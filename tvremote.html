@@ -275,7 +275,7 @@ function call(path){
   setBusy(1);working(path);
   return fetch('/act/'+path+(path.indexOf('?')<0?'?':'&')+'u='+encodeURIComponent(who||''))
   .then(function(r){return r.json()})
-  .then(function(r){setBusy(-1);workDone();return r},function(e){setBusy(-1);workDone();throw e});}
+  .then(function(r){setBusy(-1);workDone();if(r&&r['list-seq']!=null)listSeq=r['list-seq'];return r},function(e){setBusy(-1);workDone();throw e});}
 function act(b,path){flash(b,'busy');
   call(path).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok&&r.error)msg(r.error);setTimeout(poll,400);})
   .catch(function(e){flash(b,'fail',900);msg('No answer from the media machine: '+e);});}
@@ -312,6 +312,7 @@ function poll(){
     renderCrumbs(s);
     renderRecent(s,v);
     renderProfiles(s);
+    syncList(s);
     if(s.zoom)document.getElementById('zoomval').textContent=zoomText(s);
     if(s.service==='rl'){now.textContent='🔗 Level '+(level(s)||'?')+(s.link&&s.link.title?' — '+s.link.title:'');sub.textContent='Tap 📖 or a number to go back';return;}
     if(s.service==='page'){now.textContent='📖 Reading'+(s.page&&s.page.title?' — '+s.page.title:'');sub.textContent='';return;}
@@ -375,12 +376,13 @@ function load(b,path){flash(b,'busy');msg('Reading '+(svc==='yt'?'YouTube':'Netf
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
 function pageVideos(b){flash(b,'busy');
   call('page-videos').then(function(r){flash(b,r.ok?'done':'fail',900);
-    var box=document.getElementById('pgvideos');
     if(!r.ok){msg(r.error);return;}
-    if(!r.videos.length){box.innerHTML='<p class="tile" style="color:var(--soft)">No YouTube videos on this page</p>';return;}
-    box.innerHTML='<div class="grid" style="margin-top:12px">'+r.videos.map(function(v){
-      return '<button class="tile" onclick="playVid(this,\''+v.id+'\')"><img loading="lazy" src="'+esc(v.img)+'" alt=""><span>'+esc(v.title)+'</span></button>'}).join('')+'</div>';})
+    renderVideos(r.videos);})
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
+function renderVideos(videos){var box=document.getElementById('pgvideos');
+  if(!videos.length){box.innerHTML='<p class="tile" style="color:var(--soft)">No YouTube videos on this page</p>';return;}
+  box.innerHTML='<div class="grid" style="margin-top:12px">'+videos.map(function(v){
+    return '<button class="tile" onclick="playVid(this,\''+v.id+'\')"><img loading="lazy" src="'+esc(v.img)+'" alt=""><span>'+esc(v.title)+'</span></button>'}).join('')+'</div>';}
 // Links on the page being read: one opens in the TV's reading-link tab, and
 // pressing Reading comes back to the page where it was.
 function pageLinks(b){flash(b,'busy');
@@ -485,10 +487,22 @@ function openLink(b){var u=document.getElementById('link').value.trim();if(!u)re
 var tabIcon={nf:'🎬',yt:'▶️',rv:'📖▶️',page:'📄'};
 function tabs(b){if(b)flash(b,'busy');
   call('tabs').then(function(r){if(b)flash(b,r.ok?'done':'fail',900);if(!r.ok){msg(r.error);return;}
-    document.getElementById('tablist').innerHTML=r.tabs.map(function(t){
-      return '<div class="tabrow"><button class="tname" onclick="tabGo(this,\''+t.id+'\')">'+tabIcon[t.kind]+' '+esc(t.title||t.url)+'</button>'+
-        '<button class="tx" onclick="tabClose(this,\''+t.id+'\')" title="Close">✕</button></div>'}).join('')||'<p style="color:var(--soft)">No tabs</p>';})
+    renderTabs(r.tabs);})
   .catch(function(e){if(b)flash(b,'fail',900);msg('No answer: '+e);});}
+function renderTabs(tabs){
+  document.getElementById('tablist').innerHTML=tabs.map(function(t){
+    return '<div class="tabrow"><button class="tname" onclick="tabGo(this,\''+t.id+'\')">'+(tabIcon[t.kind]||'')+' '+esc(t.title||t.url)+'</button>'+
+      '<button class="tx" onclick="tabClose(this,\''+t.id+'\')" title="Close">✕</button></div>'}).join('')||'<p style="color:var(--soft)">No tabs</p>';}
+// Shared lists (2026-10-16): the last list any phone looked up, drawn here
+// too. Results only under the service they're for; videos and links only
+// while Reading.
+var listSeq=-1;
+function syncList(s){var n=s['list-seq'];if(n==null||n===listSeq)return;listSeq=n;
+  fetch('/list').then(function(r){return r.json()}).then(function(l){if(l.seq!==listSeq||!l.r)return;
+    if(l.kind==='results'){if(l.svc===svc)render(l.r);}
+    else if(l.kind==='videos'){if(svc==='page')renderVideos(l.r.videos||[]);}
+    else if(l.kind==='links'){if(svc==='page')renderLinks(l.r.links||[]);}
+    else if(l.kind==='tabs')renderTabs(l.r.tabs||[]);}).catch(function(){});}
 function tabGo(b,id){flash(b,'busy');
   call('tab?id='+id).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok)msg('That tab is gone');
     document.querySelectorAll('.tname').forEach(function(x){x.classList.remove('front')});if(r.ok)b.classList.add('front');
