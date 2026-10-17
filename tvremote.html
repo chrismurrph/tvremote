@@ -89,6 +89,7 @@ button.red{background:var(--red);border-color:var(--red)}
 #whobox .profiles button{flex:1;font-weight:600}
 /* the rarely used things, folded away above search so results stay last */
 #more{margin:22px 0 14px}#more summary{list-style:none;cursor:pointer;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--soft);font-weight:600}
+#more[open]{background:#17202c;border:1px solid #2a3a50;border-radius:14px;padding:12px 12px 14px}#more[open] summary{border-color:#2a3a50}
 #more summary::-webkit-details-marker{display:none}#more[open] summary{color:var(--fg)}
 #working{position:fixed;top:0;left:0;right:0;z-index:10;background:#3a6ea5;color:#fff;font-weight:600;text-align:center;padding:10px 16px;display:none}
 </style>
@@ -153,8 +154,16 @@ button.red{background:var(--red);border-color:var(--red)}
 <div id="pgvideos"></div>
 </div>
 
+<div id="openrow" style="display:none">
+<h2>🔗 Open a link on the TV</h2>
+<div id="openbox" style="display:flex;gap:8px">
+  <input id="link" type="url" placeholder="https://…" enterkeyhint="go" style="flex:1;font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:12px" onkeydown="if(event.key==='Enter')openLink(document.getElementById('openbtn'))">
+  <button id="openbtn" onclick="openLink(this)">Open</button>
+</div>
+</div>
+
 <details id="more">
-<summary>⋯ More: share, tabs, open a link</summary>
+<summary>⋯ More: share, tabs, lock, shut down</summary>
 <h2>📱 Share the remote</h2>
 <button id="sharebtn" style="width:100%" onclick="act(this,sharing?'share-off':'share?host='+encodeURIComponent(location.host))">Show a QR code on the TV</button>
 <p style="color:var(--soft);margin:6px 0 0">Someone else scans it with their phone's camera to get the remote.</p>
@@ -169,11 +178,7 @@ button.red{background:var(--red);border-color:var(--red)}
 <button style="width:100%" onclick="tabs(this)">Show tabs</button>
 <div id="tablist"></div>
 
-<h2>Open a link on the TV</h2>
-<div id="openbox" style="display:flex;gap:8px">
-  <input id="link" type="url" placeholder="https://…" enterkeyhint="go" style="flex:1;font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:12px" onkeydown="if(event.key==='Enter')openLink(document.getElementById('openbtn'))">
-  <button id="openbtn" onclick="openLink(this)">Open</button>
-</div>
+
 
 <h2>⏻ The TV computer</h2>
 <button id="shutbtn" style="width:100%" onclick="shutDown(this)">Shut it down</button>
@@ -356,11 +361,14 @@ function setControls(raw){var reading=(raw==='page'||raw==='rl'),ph=(raw==='ph')
   document.getElementById('phpad').style.display=ph?'':'none';
   document.getElementById('vidpad').style.display=(reading||ph)?'none':'';
   document.getElementById('readpad').style.display=reading?'':'none';}
+var wantOpen=false; // Reading pressed with nothing to read: show the link box anyway
 function setSvc(s){var changed=(s!==svc);svc=s;
   ['nf','yt','page'].forEach(function(k){document.getElementById('svc-'+k).classList.toggle('on',s===k);});
   document.getElementById('svc-photos').classList.toggle('on',s==='ph');
   document.getElementById('find').style.display=(s==='page'||s==='ph')?'none':'';
   document.getElementById('reading').style.display=(s==='page')?'':'none';
+  if(s!=='page'&&changed&&!switching)wantOpen=false;
+  document.getElementById('openrow').style.display=(s==='page'||wantOpen)?'':'none';
   document.getElementById('nfbtns').style.display=s==='nf'?'':'none';
   document.getElementById('ytbtns').style.display=s==='yt'?'':'none';
   document.getElementById('q').placeholder=s==='yt'?'Search YouTube':'Search Netflix';
@@ -368,7 +376,7 @@ function setSvc(s){var changed=(s!==svc);svc=s;
 function switchTo(b,s){flash(b,'busy');switching=true;msg('Switching the TV…');
   call('switch?to='+s).then(function(r){switching=false;flash(b,r.ok?'done':'fail',900);
     if(r.ok){setSvc(s);setControls(s);msg(r.loaded?('Loaded '+r.loaded+' — paused, ready to play'):'');
-      if(r.fresh){load(b,s==='yt'?'yt-home':'browse');return;}}else msg(r.error);setTimeout(poll,400);})
+      if(r.fresh){load(b,s==='yt'?'yt-home':'browse');return;}}else{msg(r.error);if(s==='page'){wantOpen=true;document.getElementById('openrow').style.display='';}}setTimeout(poll,400);})
   .catch(function(e){switching=false;flash(b,'fail',900);msg('No answer: '+e);});}
 function load(b,path){flash(b,'busy');msg('Reading '+(svc==='yt'?'YouTube':'Netflix')+' on the TV… (a long page takes a while)');
   if(!/^genre/.test(path))document.getElementById('genres').innerHTML='';
