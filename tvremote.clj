@@ -1757,8 +1757,8 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
           (= (:id t) @page-id) (reset! service "page"))))
 
 (defn handler-2
-  "handler, logging every button press to the journal: who, what, how long,
-   and the error if it failed. /status (polled every 3s) is not logged."
+  "handler, logging every button press to the journal: who, from which phone
+   (its address), what, how long, and the error if it failed. /status (polled every 3s) is not logged."
   [req]
   (if-not (str/starts-with? (:uri req) "/act/")
     (handler req)
@@ -1768,7 +1768,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
           ms   (- (System/currentTimeMillis) t0)
           out  (try (json/parse-string (:body res) true) (catch Exception _ nil))
           args (for [[k v] (dissoc q :u)] (str (name k) "=" (subs v 0 (min 80 (count v)))))]
-      (println (str/join " " (concat [(or (:u q) "-") (subs (:uri req) 5)] args
+      (println (str/join " " (concat [(or (:u q) "-") (str "@" (:remote-addr req)) (subs (:uri req) 5)] args
                                      [(str ms "ms") (if (:ok out) "ok" (str "FAILED: " (:error out)))])))
       (flush)
       res)))
