@@ -2363,6 +2363,25 @@ showNow();
       (reply {:ok true :until until}))
     (handler-11 req)))
 
+(defn nocursor-js [on]
+  (str "(()=>{let s=document.getElementById('tvr-nocursor');"
+       (if on
+         "if(!s){s=document.createElement('style');s.id='tvr-nocursor';s.textContent='*{cursor:none!important}';document.documentElement.appendChild(s)}return true"
+         "if(s)s.remove();return false")
+       "})()"))
+
+(defn hide-cursor!
+  "While the keyboard and mouse are locked, no cursor over Netflix or YouTube
+   (2026-10-17: left over the picture after a sign-in, it showed all evening;
+   Netflix hides it only after seeing the mouse move and stop). Unlocked, the
+   pages get their normal cursor back."
+  []
+  (let [on (locked?)]
+    (doseq [t (filter #(and (= "page" (:type %))
+                            (or (on-site? "netflix.com" %) (on-site? "youtube.com" %)))
+                      (targets))]
+      (try (js t (nocursor-js on)) (catch Exception _ nil)))))
+
 (defn -main []
   (server/run-server handler-12 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
@@ -2393,6 +2412,7 @@ showNow();
             (Thread/sleep 3000)
             (when (chrome-up?)
               (try (hide-yt-chat!) (catch Exception _ nil))
+              (try (hide-cursor!) (catch Exception _ nil))
               (try (nf-still-watching!) (catch Exception e (println "nf-still-watching:" (ex-message e))))
               (when (zero? (mod n 5))
                 (try (record-watching-2!)
