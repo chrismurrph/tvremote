@@ -1853,6 +1853,48 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
     "rv" (some-> (rv-target) (yt-do "if(ok&&p.getVolume()<30){p.unMute();p.setVolume(50);return true}return false"))
     nil))
 
+(def person-volume
+  "Each person's own volume, 0-1: where their last Vol press left it
+   (state.edn :volume {name v})."
+  (atom {}))
+
+(defn current-volume
+  "The current player's volume, 0-1, or nil."
+  []
+  (case @service
+    "nf" (some-> (tv-target) (player-do "return p?p.getVolume():(v?v.volume:null)"))
+    "yt" (some-> (yt-target) (yt-do "return ok?p.getVolume()/100:null"))
+    "rv" (some-> (rv-target) (yt-do "return ok?p.getVolume()/100:null"))
+    nil))
+
+(defn set-volume! [x]
+  (let [yt (str "if(!ok)return false;p.unMute();p.setVolume(" (* 100 x) ");return true")]
+    (case @service
+      "nf" (some-> (tv-target) (player-do (str "if(p){p.setVolume(" x ");return true}if(v){v.volume=" x ";return true}return false")))
+      "yt" (some-> (yt-target) (yt-do yt))
+      "rv" (some-> (rv-target) (yt-do yt))
+      nil)))
+
+(defn remember-volume!
+  "After a Vol press: the level it left is now this person's own."
+  [u]
+  (when-let [v (when u (current-volume))]
+    (swap! person-volume assoc u v)
+    (update-state! #(assoc-in % [:volume u] v))))
+
+(defn volume-floor-2!
+  "volume-floor!, per person (2026-10-17). Whatever starts plays at the
+   person's own volume, when they have one. Then, for anyone, nearly silent
+   (below 5%) becomes 20%: the old floor (below 30% -> 50%) undid Rica's
+   quiet 15% on every song."
+  [u]
+  (when-let [cur (current-volume)]
+    (let [want (or (get @person-volume u) cur)
+          want (if (< want 0.05) 0.2 want)]
+      (when (> (abs (- cur want)) 0.02)
+        (set-volume! want)
+        (println "volume:" (or u "-") cur "->" want)))))
+
 (defn handler-7
   "handler-6, plus volume-floor! after each press that starts or loads
    something to watch (a few seconds on, once the player is there)."
@@ -1861,7 +1903,10 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
     (when (#{"/act/play" "/act/yt-play" "/act/resume" "/act/switch" "/act/start"
              "/act/profile" "/act/page-video"} (:uri req))
       (future (Thread/sleep 4000)
-              (try (volume-floor!) (catch Exception e (println "volume-floor:" (ex-message e))))))
+              (try (volume-floor-2! (:u (query req))) (catch Exception e (println "volume-floor:" (ex-message e))))))
+    (when (= "/act/volume" (:uri req))
+      (future (Thread/sleep 300)
+              (try (remember-volume! (:u (query req))) (catch Exception e (println "remember-volume:" (ex-message e))))))
     res))
 
 (defn handler-8
@@ -2334,6 +2379,7 @@ showNow();
   (reset! ph-at (:ph-at (load-state)))
   (reset! tv-who (:tv-who (load-state)))
   (reset! convert-off-until (or (:convert-off-until (load-state)) 0))
+  (reset! person-volume (or (:volume (load-state)) {}))
   (when (and input-lock? (:input-locked (load-state))) (lock-input!))
   (when input-lock? (watch-input!))
   (convert-videos!)
