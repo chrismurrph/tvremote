@@ -1487,6 +1487,47 @@
       (do (swap! nf-still assoc :up true)
           (println "Netflix still watching?: second time with nobody about, left for a phone" (pr-str seen))))))
 
+(def nf-dialog-js
+  "Netflix's front pop-up with buttons, if any: %s is nil to read it, or a
+   button's index to press it."
+  "(press=>{const vis=e=>e&&e.getClientRects().length>0;
+   const ds=[...document.querySelectorAll('[role=dialog],[role=alertdialog],[data-uia*=interrupt],[data-uia*=modal],[data-uia*=prompt]')]
+     .filter(d=>vis(d)&&d.querySelector('button'));
+   const d=ds[ds.length-1];if(!d)return null;
+   const bs=[...d.querySelectorAll('button')].filter(b=>vis(b)&&(b.innerText||'').trim()).slice(0,4);
+   if(press!==null){const b=bs[press];if(!b)return false;b.click();return true}
+   if(!bs.length)return null;
+   return {text:(d.innerText||'').trim().replace(/\\s+/g,' ').slice(0,160),uia:d.getAttribute('data-uia'),
+           buttons:bs.map(b=>b.innerText.trim().slice(0,40))}})(%s)")
+
+(def nf-dialog
+  "Netflix's pop-up the phone shows (2026-10-18): {:id tab :text :buttons}, or
+   nil. Still watching? has its own handling; this is for the others, like
+   the 'continue with Landman?' that needed the TV's mouse on 2026-10-17."
+  (atom nil))
+
+(defn nf-dialog-tick!
+  "For the tick: notice a Netflix pop-up, log it once, offer it to the phones."
+  []
+  (let [t (when (and (= "nf" @service) (not (:up @nf-still)))
+            (first (filter #(and (= "page" (:type %)) (on-site? "netflix.com" %)) (targets))))
+        d (when t (js t (format nf-dialog-js "null")))]
+    (if d
+      (do (when (not= (:text d) (:text @nf-dialog))
+            (println "Netflix asks:" (pr-str d)))
+          (reset! nf-dialog (assoc d :id (:id t))))
+      (reset! nf-dialog nil))))
+
+(defn nf-dialog-press!
+  "A phone pressed button i of Netflix's pop-up."
+  [i]
+  (if-let [t (some->> (:id @nf-dialog) (#(first (filter (fn [x] (= % (:id x))) (targets)))))]
+    (let [ok (js t (format nf-dialog-js (str (long i))))]
+      (println "Netflix asks: pressed" i (get-in @nf-dialog [:buttons i]))
+      (reset! nf-dialog nil)
+      (if ok {:ok true} {:ok false :error "That button has gone"}))
+    {:ok false :error "Netflix isn't asking anything now"}))
+
 (defn local-status
   "For /status: :touched-ago (ms since the keyboard or mouse was used, when
    that was after the last phone press); :by-itself when YouTube or Netflix
@@ -1499,6 +1540,7 @@
         k  (get-in @opened ["yt" :key])]
     (cond-> {}
       (:up @nf-still) (assoc :nf-still true)
+      @nf-dialog (assoc :nf-dialog (dissoc @nf-dialog :id))
       (and t (or (nil? @last-press) (> t @last-press))) (assoc :touched-ago (- now t))
       (and (= "yt" (:service st)) id k (not= id k)) (assoc :by-itself true)
       (and (= "yt" (:service st)) id (not= id k))   (assoc :keepable true)
@@ -2354,14 +2396,17 @@ showNow();
   (when (str/starts-with? (str (:uri req)) "/act/")
     (reset! last-press (System/currentTimeMillis))
     (when-let [c @converting] (signal! c "STOP") (swap! converting assoc :stopped true)))
-  (if (= "/act/convert-off" (:uri req))
+  (cond
+    (= "/act/nf-dialog" (:uri req))
+    (reply (nf-dialog-press! (or (parse-long (or (:b (query req)) "")) 0)))
+    (= "/act/convert-off" (:uri req))
     (let [h     (or (parse-double (or (:hours (query req)) "")) 10)
           until (+ (System/currentTimeMillis) (long (* h 3600 1000)))]
       (reset! convert-off-until until)
       (update-state! #(assoc % :convert-off-until until))
       (println "videos: off until" (str (java.time.Instant/ofEpochMilli until)))
       (reply {:ok true :until until}))
-    (handler-11 req)))
+    :else (handler-11 req)))
 
 (defn nocursor-js [on]
   (str "(()=>{let s=document.getElementById('tvr-nocursor');"
@@ -2413,6 +2458,7 @@ showNow();
             (when (chrome-up?)
               (try (hide-yt-chat!) (catch Exception _ nil))
               (try (hide-cursor!) (catch Exception _ nil))
+              (try (nf-dialog-tick!) (catch Exception e (println "nf-dialog:" (ex-message e))))
               (try (nf-still-watching!) (catch Exception e (println "nf-still-watching:" (ex-message e))))
               (when (zero? (mod n 5))
                 (try (record-watching-2!)
