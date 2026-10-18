@@ -2427,6 +2427,29 @@ showNow();
                       (targets))]
       (try (js t (nocursor-js on)) (catch Exception _ nil)))))
 
+(defn nocursor-js-2
+  "As nocursor-js, but says \"added\" when this call put the style in."
+  [on]
+  (str "(()=>{let s=document.getElementById('tvr-nocursor');"
+       (if on
+         "if(s)return true;s=document.createElement('style');s.id='tvr-nocursor';s.textContent='*{cursor:none!important}';document.documentElement.appendChild(s);return 'added'"
+         "if(s)s.remove();return false")
+       "})()"))
+
+(defn hide-cursor-2!
+  "As hide-cursor!, plus one made-up mouse move when the style goes in.
+   2026-10-19: the style was on the Netflix page but the cursor still showed
+   all evening. Chrome redraws the cursor only on a mouse move, and the lock
+   stops real ones. Netflix shows its controls for a moment, then hides them."
+  []
+  (let [on (locked?)]
+    (doseq [t (filter #(and (= "page" (:type %))
+                            (or (on-site? "netflix.com" %) (on-site? "youtube.com" %)))
+                      (targets))]
+      (try (when (= "added" (js t (nocursor-js-2 on)))
+             (cdp t "Input.dispatchMouseEvent" {:type "mouseMoved" :x 5 :y 5}))
+           (catch Exception _ nil)))))
+
 (defn -main []
   (server/run-server handler-12 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
@@ -2457,7 +2480,7 @@ showNow();
             (Thread/sleep 3000)
             (when (chrome-up?)
               (try (hide-yt-chat!) (catch Exception _ nil))
-              (try (hide-cursor!) (catch Exception _ nil))
+              (try (hide-cursor-2!) (catch Exception _ nil))
               (try (nf-dialog-tick!) (catch Exception e (println "nf-dialog:" (ex-message e))))
               (try (nf-still-watching!) (catch Exception e (println "nf-still-watching:" (ex-message e))))
               (when (zero? (mod n 5))
