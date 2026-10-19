@@ -120,10 +120,18 @@ button.red{background:var(--red);border-color:var(--red)}
   <button class="big" id="phplay" onclick="act(this,'ph-toggle')">⏯</button>
   <button onclick="act(this,'ph-step?n=1')">Older ▶</button>
   <button onclick="act(this,'ph-step?n=-1&month=1')">⏮ Month newer</button>
-  <button id="pharch" onclick="phArchive(this)">🗄 Archive</button>
+  <button id="pharch" onclick="phArchive(this)">🗑 Delete</button>
   <button onclick="act(this,'ph-step?n=1&month=1')">Month older ⏭</button>
 </div>
-<button id="phundo" style="width:100%;margin-top:10px;display:none" onclick="act(this,'ph-undo')">↩ Undo archive</button>
+<div class="pad" id="phvid" style="display:none;margin-top:10px">
+  <button onclick="act(this,'ph-seek?ms=-10000')">⏪ 10s</button>
+  <button onclick="act(this,'ph-start')">⏮ Start</button>
+  <button onclick="act(this,'ph-seek?ms=10000')">10s ⏩</button>
+  <button onclick="act(this,'ph-volume?d=-0.1')">🔉 Vol −</button>
+  <button onclick="act(this,'ph-mute')">🔇 Mute</button>
+  <button onclick="act(this,'ph-volume?d=0.1')">🔊 Vol +</button>
+</div>
+<button id="phundo" style="width:100%;margin-top:10px;display:none" onclick="act(this,'ph-undo')">↩ Undo delete</button>
 </div>
 <div id="readpad" style="display:none">
 <div class="pad">
@@ -228,12 +236,13 @@ function photos(b){flash(b,'busy');switching=true;msg('Switching the TV…');
   call('ph-open').then(function(r){switching=false;flash(b,r.ok?'done':'fail',900);
     if(r.ok){setSvc('ph');setControls('ph');msg('');}else msg(r.error);setTimeout(poll,400);})
   .catch(function(e){switching=false;flash(b,'fail',900);msg('No answer: '+e);});}
-// Archive moves the photo to the archive folder (never deleted). Two taps,
+// Delete moves the photo to the archive folder (never really deleted; Rica
+// looked for a Delete button, 2026-10-19). Two taps,
 // like the ✕ on Recent; Undo puts the last one back.
-function phArchive(b){if(!b.classList.contains('sure')){b.classList.add('sure');b.textContent='Archive it?';
+function phArchive(b){if(!b.classList.contains('sure')){b.classList.add('sure');b.textContent='Delete it?';
     b.style.background='var(--red)';b.style.borderColor='var(--red)';
-    setTimeout(function(){b.classList.remove('sure');b.textContent='🗄 Archive';b.style.background='';b.style.borderColor='';},4000);return;}
-  b.classList.remove('sure');b.textContent='🗄 Archive';b.style.background='';b.style.borderColor='';
+    setTimeout(function(){b.classList.remove('sure');b.textContent='🗑 Delete';b.style.background='';b.style.borderColor='';},4000);return;}
+  b.classList.remove('sure');b.textContent='🗑 Delete';b.style.background='';b.style.borderColor='';
   act(b,'ph-archive');}
 // The names come from the server's :people setting; with none set, the phone
 // asks for one. What's kept and sent is a plain lower-case form of the name.
@@ -325,7 +334,7 @@ function poll(){
       now.textContent=p.total?('🖼 Photos — '+p.n+' of '+p.total+(p.video?(p.unconverted?' (video, not ready yet)':' (video)'):'')):'🖼 Photos — none';
       sub.textContent=p.date||'';
       document.getElementById('phundo').style.display=p.undo?'':'none';
-      document.getElementById('phplay').style.visibility=p.video?'':'hidden';return;}
+      document.getElementById('phplay').style.visibility=p.video?'':'hidden';document.getElementById('phvid').style.display=(p.video&&!p.unconverted)?'':'none';return;}
     if(s.away){now.textContent='TV is on another page (signing in?)';sub.textContent='';return;}
     var watching=/\/watch/.test(s.url||'');
     var name=s.title||[s.picked,s.episode].filter(Boolean).join(' · ');

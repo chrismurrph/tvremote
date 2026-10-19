@@ -2303,7 +2303,7 @@ function showNow(){return fetch('/photos/now').then(r=>r.json()).then(function(n
     if(n.unconverted){box.innerHTML='<div id=none>This video isn’t ready yet<br><small>The TV converts videos while it’s idle</small></div>';}
     else{
     var el=document.createElement(n.video?'video':'img');el.src=src(n.rel);
-    if(n.video){el.autoplay=true;el.controls=false;el.playsInline=true}
+    if(n.video){el.autoplay=true;el.controls=false;el.playsInline=true;if(n.volume!=null)el.volume=n.volume}
     box.replaceChildren(el)}}
   document.getElementById('cap').textContent=n.date+'  ·  '+n.n+' of '+n.total;
   if(n.next&&!/\\.(mp4|mov|webm|3gp)$/i.test(n.next)){ahead=new Image();ahead.src=src(n.next)}
@@ -2532,8 +2532,61 @@ showNow();
       (flush)
       res)))
 
+(defn ph-video-js
+  "Script for the video on the photos tab: body runs with v, the video.
+   Returns false when no video is showing."
+  [body]
+  (str "(()=>{const v=document.querySelector('video');if(!v)return false;" body "})()"))
+
+(defn ph-video!
+  "A video control press on Photos (2026-10-19: Photos had no volume, and
+   its videos often have sound). Volume is the person's own, as for Netflix
+   and YouTube: what Vol leaves is remembered, and new videos start at it."
+  [action q]
+  (let [t (ph-target)
+        u (user-of q)
+        r (when t
+            (js t (ph-video-js
+                   (case action
+                     "ph-seek"   (str "v.currentTime=Math.max(0,v.currentTime+(" (or (parse-long (or (:ms q) "")) 0) ")/1000);return true")
+                     "ph-start"  "v.currentTime=0;v.play();return true"
+                     "ph-mute"   "v.muted=!v.muted;return true"
+                     "ph-volume" (str "v.muted=false;v.volume=Math.max(0,Math.min(1,v.volume+(" (or (parse-double (or (:d q) "")) 0) ")));return v.volume")))))]
+    (when (and u (number? r))
+      (swap! person-volume assoc u r)
+      (update-state! #(assoc-in % [:volume u] r)))
+    (cond
+      (nil? t) {:ok false :error "Photos aren't showing on the TV"}
+      (false? r) {:ok false :error "No video is showing"}
+      :else {:ok true})))
+
+(def ph-video-acts #{"/act/ph-seek" "/act/ph-start" "/act/ph-mute" "/act/ph-volume"})
+
+(defn handler-15
+  "handler-14, plus the video buttons on Photos (logged and stopping a
+   conversion like any press), and /photos/now telling the TV page the
+   person's volume for the next video."
+  [req]
+  (let [uri (:uri req)]
+    (cond
+      (ph-video-acts uri)
+      (let [t0 (System/currentTimeMillis)
+            q  (query req)]
+        (reset! last-press t0)
+        (when-let [c @converting] (signal! c "STOP") (swap! converting assoc :stopped true))
+        (let [out (try (ph-video! (subs uri 5) q) (catch Exception e {:ok false :error (ex-message e)}))
+              args (for [[k v] (dissoc q :u)] (str (name k) "=" v))]
+          (println (str/join " " (concat [(or (:u q) "-") (str "@" (:remote-addr req)) (subs uri 5)] args
+                                         [(str (- (System/currentTimeMillis) t0) "ms") (if (:ok out) "ok" (str "FAILED: " (:error out)))])))
+          (flush)
+          (reply out)))
+      (= "/photos/now" uri)
+      (reply (let [n (ph-now) v (get @person-volume @tv-who)]
+               (cond-> n v (assoc :volume v))))
+      :else (handler-14 req))))
+
 (defn -main []
-  (server/run-server handler-14 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-15 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))
