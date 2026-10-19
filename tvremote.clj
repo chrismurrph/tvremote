@@ -2299,6 +2299,7 @@ function showNow(){return fetch('/photos/now').then(r=>r.json()).then(function(n
   var box=document.getElementById('box');
   if(!n.rel){box.innerHTML='<div id=none>No photos</div>';document.getElementById('cap').textContent='';shown=null;return true}
   var key=n.rel+(n.unconverted?'|u':'');
+  if(n.build){if(window.tvrBuild&&window.tvrBuild!==n.build&&key!==shown){location.reload();return true}window.tvrBuild=n.build}
   if(key!==shown){shown=key;
     if(n.unconverted){box.innerHTML='<div id=none>This video isn’t ready yet<br><small>The TV converts videos while it’s idle</small></div>';}
     else{
@@ -2562,6 +2563,11 @@ showNow();
 
 (def ph-video-acts #{"/act/ph-seek" "/act/ph-start" "/act/ph-mute" "/act/ph-volume"})
 
+(def server-build
+  "Changes on every server start. The Photos page reloads itself when it
+   changes, on its next photo, so it never keeps old code after a deploy."
+  (str (System/currentTimeMillis)))
+
 (defn handler-15
   "handler-14, plus the video buttons on Photos (logged and stopping a
    conversion like any press), and /photos/now telling the TV page the
@@ -2582,7 +2588,7 @@ showNow();
           (reply out)))
       (= "/photos/now" uri)
       (reply (let [n (ph-now) v (get @person-volume @tv-who)]
-               (cond-> n v (assoc :volume v))))
+               (cond-> (assoc n :build server-build) v (assoc :volume v))))
       :else (handler-14 req))))
 
 (defn -main []
