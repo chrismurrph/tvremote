@@ -2587,7 +2587,11 @@ showNow();
           (flush)
           (reply out)))
       (= "/photos/now" uri)
-      (reply (let [n (ph-now) v (get @person-volume @tv-who)]
+      (reply (let [_ (when (and (empty? @ph-index) photos-dir (.isDirectory ^java.io.File photos-dir))
+                       ;; 2026-10-19: after a restart the list was empty until
+                       ;; someone pressed Photos, so the TV said "No photos"
+                       (index-photos!))
+                   n (ph-now) v (get @person-volume @tv-who)]
                (cond-> (assoc n :build server-build) v (assoc :volume v))))
       :else (handler-14 req))))
 
