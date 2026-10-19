@@ -372,7 +372,8 @@ function setControls(raw){var reading=(raw==='page'||raw==='rl'),ph=(raw==='ph')
   document.getElementById('vidpad').style.display=(reading||ph)?'none':'';
   document.getElementById('readpad').style.display=reading?'':'none';}
 var wantOpen=false; // Reading pressed with nothing to read: show the link box anyway
-function setSvc(s){var changed=(s!==svc);svc=s;
+var lastQ={};
+function setSvc(s){var changed=(s!==svc),prevSvc=svc;svc=s;
   ['nf','yt','page'].forEach(function(k){document.getElementById('svc-'+k).classList.toggle('on',s===k);});
   document.getElementById('svc-photos').classList.toggle('on',s==='ph');
   document.getElementById('find').style.display=(s==='page'||s==='ph')?'none':'';
@@ -382,6 +383,9 @@ function setSvc(s){var changed=(s!==svc);svc=s;
   document.getElementById('nfbtns').style.display=s==='nf'?'':'none';
   document.getElementById('ytbtns').style.display=s==='yt'?'':'none';
   document.getElementById('q').placeholder=s==='yt'?'Search YouTube':'Search Netflix';
+  // Each service keeps its own search text (2026-10-19: a Netflix search stayed
+  // in the box after switching to YouTube).
+  if(changed){var qb=document.getElementById('q');if(prevSvc)lastQ[prevSvc]=qb.value;qb.value=lastQ[s]||'';}
   if(changed){document.getElementById('results').innerHTML='';document.getElementById('genres').innerHTML='';}}
 function switchTo(b,s){flash(b,'busy');switching=true;msg('Switching the TV…');
   call('switch?to='+s).then(function(r){switching=false;flash(b,r.ok?'done':'fail',900);
