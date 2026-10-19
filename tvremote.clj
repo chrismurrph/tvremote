@@ -530,6 +530,32 @@
       "empty" {:kind "nothing" :note "YouTube shows nothing here — signed in on the TV?"}
       {:kind "nothing" :url (js t "location.href")})))
 
+(def yt-count-js "document.querySelectorAll('a[href*=\"/watch?v=\"]').length")
+
+(defn yt-browse-2
+  "As yt-browse, but gentler: 2 scrolls, not 4, and each waits until the
+   new videos are in (up to 5s) before the next. 2026-10-19: four quick
+   scrolls on Subscriptions froze the YouTube tab on this old machine."
+  [url]
+  (reset! service "yt")
+  (let [t (yt-target)]
+    (nf-pause)
+    (navigate t url)
+    (Thread/sleep 1000)
+    (case (wait-for t yt-kind-js 15000)
+      "titles" (do (dotimes [_ 2]
+                     (let [before (js t yt-count-js)]
+                       (js t "window.scrollTo(0,document.documentElement.scrollHeight)")
+                       (loop [n 0]
+                         (Thread/sleep 700)
+                         (when (and (< n 7) (<= (or (js t yt-count-js) 0) (or before 0)))
+                           (recur (inc n))))
+                       (Thread/sleep 500)))
+                   (js t "window.scrollTo(0,0)")
+                   {:kind "titles" :rows (js t yt-scrape-js)})
+      "empty" {:kind "nothing" :note "YouTube shows nothing here — signed in on the TV?"}
+      {:kind "nothing" :url (js t "location.href")})))
+
 (defn play-in-tab!
   "Play YouTube video id in tab t, full-screen once it's going."
   [t id]
@@ -1724,10 +1750,10 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                        (when ok (some-> (rl-target) zoom-when-loaded!))
                        {:ok ok})
         "page-back"  (if-let [p (page-target)] {:ok (page-back p)} {:ok false :error "No page open for reading"})
-        "yt-home"    (assoc (yt-browse (str yt "/")) :ok true)
-        "yt-subs"    (assoc (yt-browse (str yt "/feed/subscriptions")) :ok true)
-        "yt-history" (assoc (yt-browse (str yt "/feed/history")) :ok true)
-        "yt-search"  (assoc (yt-browse (str yt "/results?search_query=" (java.net.URLEncoder/encode (:q q) "UTF-8"))) :ok true)
+        "yt-home"    (assoc (yt-browse-2 (str yt "/")) :ok true)
+        "yt-subs"    (assoc (yt-browse-2 (str yt "/feed/subscriptions")) :ok true)
+        "yt-history" (assoc (yt-browse-2 (str yt "/feed/history")) :ok true)
+        "yt-search"  (assoc (yt-browse-2 (str yt "/results?search_query=" (java.net.URLEncoder/encode (:q q) "UTF-8"))) :ok true)
         "yt-play"    (do (try (record-watching-2!) (catch Exception _ nil))
                          (set-owner! "yt" (user-of q))
                          (set-opened! "yt" (user-of q) (re-find #"[\w-]{11}" (:id q)))
@@ -2450,8 +2476,28 @@ showNow();
              (cdp t "Input.dispatchMouseEvent" {:type "mouseMoved" :x 5 :y 5}))
            (catch Exception _ nil)))))
 
+(defn frozen-tabs
+  "The Netflix and YouTube tabs that don't answer a simple question in 4s.
+   Only those two sites: script runs on no other page."
+  []
+  (let [ts (filter #(or (on-site? "netflix.com" %) (on-site? "youtube.com" %)) (targets))
+        fs (mapv (fn [t] [t (future (try (js t "1") (catch Exception _ :error)))]) ts)]
+    (for [[t f] fs :when (= ::hung (deref f 4000 ::hung))] t)))
+
+(defn handler-13
+  "Start, with Chrome already running, also closes a frozen Netflix or
+   YouTube tab (2026-10-19: a frozen YouTube tab held every press up, and
+   Start said only \"already running\"). The phone's last service then
+   opens a fresh one, as after any Start."
+  [req]
+  (when (and (= "/act/start" (:uri req)) (chrome-up?))
+    (doseq [t (frozen-tabs)]
+      (println "start: closing frozen tab" (:url t))
+      (close-tab (:id t))))
+  (handler-12 req))
+
 (defn -main []
-  (server/run-server handler-12 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-13 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))
