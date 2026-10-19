@@ -2496,8 +2496,44 @@ showNow();
       (close-tab (:id t))))
   (handler-12 req))
 
+(def playing-js "(()=>{const v=document.querySelector('video');return !!(v&&!v.paused)})()")
+
+(defn photos-guard!
+  "While Photos is on the TV, Netflix and YouTube stay paused. 2026-10-19:
+   YouTube played behind Photos - a person's video was still loading when
+   Photos paused everything, and it started after."
+  []
+  (when (= "ph" @service)
+    (doseq [t (filter #(or (on-site? "netflix.com" %) (on-site? "youtube.com" %)) (targets))]
+      (when (js t playing-js)
+        (println "photos: paused" (:url t) "playing behind Photos")
+        (if (on-site? "netflix.com" t) (nf-pause) (yt-pause t))))))
+
+(def unlogged-acts
+  "Presses handled above handler-2, so it never logged them."
+  #{"/act/who" "/act/ph-open" "/act/ph-step" "/act/ph-toggle" "/act/ph-undo"
+    "/act/ph-archive" "/act/nf-dialog" "/act/convert-off"})
+
+(defn handler-14
+  "handler-13, plus the press log line (as handler-2 writes it) for the
+   presses that never reached handler-2: choosing a person, Photos, Netflix
+   pop-ups. 2026-10-19: Rica's Photos press was missing from the log."
+  [req]
+  (if-not (unlogged-acts (:uri req))
+    (handler-13 req)
+    (let [t0   (System/currentTimeMillis)
+          q    (query req)
+          res  (handler-13 req)
+          ms   (- (System/currentTimeMillis) t0)
+          out  (try (json/parse-string (:body res) true) (catch Exception _ nil))
+          args (for [[k v] (dissoc q :u)] (str (name k) "=" (subs v 0 (min 80 (count v)))))]
+      (println (str/join " " (concat [(or (:u q) "-") (str "@" (:remote-addr req)) (subs (:uri req) 5)] args
+                                     [(str ms "ms") (if (:ok out) "ok" (str "FAILED: " (:error out)))])))
+      (flush)
+      res)))
+
 (defn -main []
-  (server/run-server handler-13 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-14 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))
@@ -2527,6 +2563,7 @@ showNow();
             (when (chrome-up?)
               (try (hide-yt-chat!) (catch Exception _ nil))
               (try (hide-cursor-2!) (catch Exception _ nil))
+              (try (photos-guard!) (catch Exception e (println "photos-guard:" (ex-message e))))
               (try (nf-dialog-tick!) (catch Exception e (println "nf-dialog:" (ex-message e))))
               (try (nf-still-watching!) (catch Exception e (println "nf-still-watching:" (ex-message e))))
               (when (zero? (mod n 5))
