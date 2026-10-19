@@ -2306,6 +2306,8 @@ function showNow(){return fetch('/photos/now').then(r=>r.json()).then(function(n
     var el=document.createElement(n.video?'video':'img');el.src=src(n.rel);
     if(n.video){el.autoplay=true;el.controls=false;el.playsInline=true;if(n.volume!=null)el.volume=n.volume}
     box.replaceChildren(el)}}
+  var cur=box.querySelector('img,video');if(cur){var r=n.rotate||0,side=(r%180)!==0;
+    cur.style.transform=r?'rotate('+r+'deg)':'';cur.style.maxWidth=side?'100vh':'';cur.style.maxHeight=side?'100vw':''}
   document.getElementById('cap').textContent=n.date+'  ·  '+n.n+' of '+n.total;
   if(n.next&&!/\\.(mp4|mov|webm|3gp)$/i.test(n.next)){ahead=new Image();ahead.src=src(n.next)}
   return true})}
@@ -2561,12 +2563,33 @@ showNow();
       (false? r) {:ok false :error "No video is showing"}
       :else {:ok true})))
 
-(def ph-video-acts #{"/act/ph-seek" "/act/ph-start" "/act/ph-mute" "/act/ph-volume"})
+(def ph-video-acts #{"/act/ph-seek" "/act/ph-start" "/act/ph-mute" "/act/ph-volume" "/act/ph-rotate"})
 
 (def server-build
   "Changes on every server start. The Photos page reloads itself when it
    changes, on its next photo, so it never keeps old code after a deploy."
   (str (System/currentTimeMillis)))
+
+(def ph-files-file
+  "Settings for single photos and videos, by :rel: {rel {:rotate 90}}.
+   Its own file, not state.edn, so it reads and edits easily by hand."
+  (str base-dir "/photos.edn"))
+
+(def ph-files
+  (atom (try (read-string (slurp ph-files-file)) (catch Exception _ {}))))
+
+(defn ph-rotate!
+  "Turn what Photos shows a quarter turn clockwise, and remember it for that
+   file (2026-10-19)."
+  []
+  (if-let [rel @ph-at]
+    (let [r (mod (+ 90 (get-in @ph-files [rel :rotate] 0)) 360)]
+      (swap! ph-files (fn [m] (if (zero? r) (update m rel dissoc :rotate) (assoc-in m [rel :rotate] r))))
+      (swap! ph-files (fn [m] (if (empty? (get m rel)) (dissoc m rel) m)))
+      (spit ph-files-file (str "{" (str/join "\n " (for [[k v] (sort-by key @ph-files)] (str (pr-str k) " " (pr-str v)))) "}\n"))
+      (ph-show!)
+      {:ok true :rotate r})
+    {:ok false :error "Photos aren't showing on the TV"}))
 
 (defn handler-15
   "handler-14, plus the video buttons on Photos (logged and stopping a
@@ -2580,7 +2603,7 @@ showNow();
             q  (query req)]
         (reset! last-press t0)
         (when-let [c @converting] (signal! c "STOP") (swap! converting assoc :stopped true))
-        (let [out (try (ph-video! (subs uri 5) q) (catch Exception e {:ok false :error (ex-message e)}))
+        (let [out (try (if (= uri "/act/ph-rotate") (ph-rotate!) (ph-video! (subs uri 5) q)) (catch Exception e {:ok false :error (ex-message e)}))
               args (for [[k v] (dissoc q :u)] (str (name k) "=" v))]
           (println (str/join " " (concat [(or (:u q) "-") (str "@" (:remote-addr req)) (subs uri 5)] args
                                          [(str (- (System/currentTimeMillis) t0) "ms") (if (:ok out) "ok" (str "FAILED: " (:error out)))])))
@@ -2592,7 +2615,8 @@ showNow();
                        ;; someone pressed Photos, so the TV said "No photos"
                        (index-photos!))
                    n (ph-now) v (get @person-volume @tv-who)]
-               (cond-> (assoc n :build server-build) v (assoc :volume v))))
+               (cond-> (assoc n :build server-build) v (assoc :volume v)
+                 (get-in @ph-files [(:rel n) :rotate]) (assoc :rotate (get-in @ph-files [(:rel n) :rotate])))))
       :else (handler-14 req))))
 
 (defn -main []
