@@ -92,10 +92,16 @@ button.red{background:var(--red);border-color:var(--red)}
 #more[open]{background:#17202c;border:1px solid #2a3a50;border-radius:14px;padding:12px 12px 14px}#more[open] summary{border-color:#2a3a50}
 #more summary::-webkit-details-marker{display:none}#more[open] summary{color:var(--fg)}
 #working{position:fixed;top:0;left:0;right:0;z-index:10;background:#3a6ea5;color:#fff;font-weight:600;text-align:center;padding:10px 16px;display:none}
+/* the phone can't reach the TV (most often: on mobile data, not the home Wi-Fi) */
+#offline{position:sticky;top:0;z-index:11;background:var(--bad);color:#fff;font-weight:700;font-size:20px;text-align:center;padding:16px;border-radius:12px;margin-bottom:12px;display:none}
+#offline small{display:block;font-weight:400;font-size:15px;margin-top:4px}
+body.offline #offline{display:block}
+body.offline button,body.offline input{opacity:.4;pointer-events:none}
 </style>
 </head>
 <body>
 <div id="working"></div>
+<div id="offline">📵 Not connected to the TV<small>This phone is probably on mobile data. Turn on the home Wi-Fi.</small></div>
 <div id="whobox" style="display:none"><div style="margin-bottom:10px">Who uses this phone? The TV keeps each person's last show and place.</div>
 <div class="profiles" id="whobtns"></div></div>
 <div id="whorow"><span id="wake"></span><button id="who" onclick="askWho()">…</button></div>
@@ -285,6 +291,7 @@ function working(path){var t0=Date.now(),el=document.getElementById('working'),l
     if(Date.now()-t0>700){el.textContent='⏳ '+label+'… '+s+'s';el.style.display='block';}},250);}
 function workDone(){clearInterval(workTimer);document.getElementById('working').style.display='none';}
 function call(path){
+  if(offline)return Promise.resolve({ok:false,error:'Not connected to the TV — is this phone on the home Wi-Fi?'});
   if(busy)return Promise.resolve({ok:false,error:'The TV is still busy with the last press'});
   if(!chromeUp&&!/^(start|close-all|input-lock|shutdown)\b/.test(path))return Promise.resolve({ok:false,error:'Chrome isn\'t running — press Start'});
   setBusy(1);working(path);
@@ -293,7 +300,7 @@ function call(path){
   .then(function(r){setBusy(-1);workDone();if(r&&r['list-seq']!=null)listSeq=r['list-seq'];return r},function(e){setBusy(-1);workDone();throw e});}
 function act(b,path){flash(b,'busy');
   call(path).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok&&r.error)msg(r.error);setTimeout(poll,400);})
-  .catch(function(e){flash(b,'fail',900);msg('No answer from the media machine: '+e);});}
+  .catch(function(e){flash(b,'fail',900);setOffline(true);msg('No answer from the media machine: '+e);});}
 function msg(t){document.getElementById('msg').textContent=t||'';}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]});}
 function clock(ms){if(ms==null)return'';var s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor(s%3600/60);s=s%60;
@@ -301,8 +308,17 @@ function clock(ms){if(ms==null)return'';var s=Math.floor(ms/1000),h=Math.floor(s
 
 var locked=false; // the TV computer's keyboard and mouse are locked (from /status)
 var sharing=false; // the TV is showing Share's QR code (from /status, so every phone sees it)
+// Off the home Wi-Fi a request to the TV's LAN address can hang rather than fail,
+// so a poll gives up after 4s and the page goes into body.offline (red banner,
+// everything greyed) until a poll answers again.
+var offline=false,polling=false;
+function setOffline(b){offline=b;document.body.classList.toggle('offline',b);}
 function poll(){
-  fetch('/status?u='+encodeURIComponent(who||'')).then(function(r){return r.json()}).then(function(s){
+  if(polling)return;polling=true;
+  var ac=window.AbortController?new AbortController():null,
+      t=setTimeout(function(){if(ac)ac.abort();},4000);
+  fetch('/status?u='+encodeURIComponent(who||''),ac?{signal:ac.signal}:{}).then(function(r){return r.json()},function(e){e.net=1;throw e}).then(function(s){
+    clearTimeout(t);polling=false;setOffline(false);
     syncWho(s);
     document.getElementById('startrow').style.display=s.chrome?'none':'block';
     chromeUp=!!s.chrome;document.body.classList.toggle('nochrome',!s.chrome);
@@ -341,7 +357,7 @@ function poll(){
     var name=s.title||[s.picked,s.episode].filter(Boolean).join(' · ');
     now.textContent=watching?((s.playing?'▶ Playing':'⏸ Paused')+(s.service==='rv'?' from Reading':'')+(name?' — '+name:'')):(s.service==='yt'?'On YouTube · not playing':'On Netflix · not playing');
     sub.textContent=(watching&&s.duration)?clock(s.time)+' / '+clock(s.duration)+(s.volume!=null?'  ·  vol '+Math.round(s.volume*100)+'%':''):'';
-  }).catch(function(){document.getElementById('now').textContent='Can\'t reach the TV — is this phone on the home Wi-Fi?';document.getElementById('sub').textContent='(or the media machine is off)';});}
+  }).catch(function(e){clearTimeout(t);polling=false;setOffline(!!(e&&e.net));document.getElementById('now').textContent='Can\'t reach the TV — is this phone on the home Wi-Fi?';document.getElementById('sub').textContent='(or the media machine is off)';});}
 
 function render(r){
   var out=document.getElementById('results');out.innerHTML='';msg('');
@@ -573,6 +589,8 @@ showWho();
 setSvc('nf');
 poll();
 var timer=setInterval(function(){if(!document.hidden)poll();},3000);
+// coming back to the phone (from outside, say): check at once, not in up to 3s
+document.addEventListener('visibilitychange',function(){if(!document.hidden)poll();});
 </script>
 </body>
 </html>
