@@ -39,6 +39,12 @@
 (def reading-people (vec (keep #(when (and (map? %) (:reading? %)) (:name %)) (:people config))))
 ;; :photos? the same way (2026-10-16), but with no one marked no one gets it.
 (def photos-people (vec (keep #(when (and (map? %) (:photos? %)) (:name %)) (:people config))))
+;; :keep? false / :not-interested? false (2026-10-21) take Keep this / Not
+;; interested away from that person; unmarked, everyone has them.
+(def no-keep-people (vec (keep #(when (and (map? %) (false? (:keep? %))) (:name %)) (:people config))))
+(def no-nope-people (vec (keep #(when (and (map? %) (false? (:not-interested? %))) (:name %)) (:people config))))
+(defn barred? [names user]
+  (boolean (some #(= user (str/lower-case (str/replace % #"[^A-Za-z]" ""))) names)))
 
 (def port (parse-long (or (System/getenv "TVREMOTE_PORT") (str (:port config)))))
 (def cdp-port (:cdp-port config))
@@ -1792,9 +1798,13 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                            {:ok ok}))
         "resume"     (resume! (:svc q) (user-of q) (parse-long (:i q)))
         "forget"     (forget! (:svc q) (user-of q) (:key q))
-        "keep"       (keep! (:svc q) (user-of q))
+        "keep"       (if (barred? no-keep-people (user-of q))
+                       {:ok false :error "Keep this is turned off for you"}
+                       (keep! (:svc q) (user-of q)))
         "yt-next"    (yt-next!)
-        "yt-nope"    (yt-nope!)
+        "yt-nope"    (if (barred? no-nope-people (user-of q))
+                       {:ok false :error "Not interested is turned off for you"}
+                       (yt-nope!))
         "shutdown"   (shut-down!)
         "nf-continue" (nf-continue!)
         "tabs"       {:ok true :tabs (user-tabs)}
@@ -1929,7 +1939,8 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
    who gets Reading (empty: everyone) and who gets Photos (empty: no one)."
   [req]
   (if (= "/config" (:uri req))
-    (reply {:people people-names :reading reading-people :photos photos-people})
+    (reply {:people people-names :reading reading-people :photos photos-people
+            :no-keep no-keep-people :no-nope no-nope-people})
     (handler-2 req)))
 
 (def home-screen-files

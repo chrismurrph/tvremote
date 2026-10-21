@@ -5,6 +5,8 @@
  ;; A name can instead be a map with :reading? true: then only those
  ;; people get the Reading button (with none marked, everyone does).
  ;; :photos? true gives the Photos button (with none marked, no one has it).
+ ;; :keep? false takes YouTube/Netflix's Keep this away from that person, and
+ ;; :not-interested? false YouTube's Not interested (unmarked, everyone has them).
  :people []                       ; e.g. [{:name "Ann" :reading? true} "Bob"]
 
  ;; The port the phone page is served on: http://<this computer>:7700/
