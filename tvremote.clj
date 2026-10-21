@@ -1646,11 +1646,27 @@
    return {ok:true,channel:name,disliked,blocked:channel}})()")
 
 (def yt-home-top-js
-  "Click YouTube Home's first video that isn't from channel %s (a JSON string)."
-  "(()=>{const name=%s;const t=[...document.querySelectorAll('ytd-rich-item-renderer yt-lockup-view-model')]
-   .find(r=>!(name&&r.innerText.includes(name))&&r.querySelector('a[href*=\"/watch?v=\"]'));
-   if(!t)return null;const a=t.querySelector('a[href*=\"/watch?v=\"]');a.click();
-   return (t.querySelector('h3')||a).innerText.trim()})()")
+  "Click a random one of YouTube Home's first 24 videos, skipping channel %s and
+   the video ids %s (both JSON). Random, not the top one: the top of Home is
+   music mixes and barely changes between presses, so the top tile cycled a
+   few videos and never reached the geopolitics further down (2026-10-21).
+   Returns {:id :title}, or null while Home hasn't drawn."
+  "(()=>{const name=%s,seen=%s;
+   const ts=[...document.querySelectorAll('ytd-rich-item-renderer yt-lockup-view-model')].slice(0,24)
+     .map(r=>({r,a:r.querySelector('a[href*=\"/watch?v=\"]')})).filter(x=>x.a)
+     .map(x=>Object.assign(x,{id:(x.a.getAttribute('href').match(/v=([\\w-]{11})/)||[])[1]}));
+   if(!ts.length)return null;
+   const ok=ts.filter(x=>!(name&&x.r.innerText.includes(name))&&!seen.includes(x.id));
+   const pick=(ok.length?ok:ts)[Math.floor(Math.random()*(ok.length?ok:ts).length)];
+   pick.a.click();return {id:pick.id,title:(pick.r.querySelector('h3')||pick.a).innerText.trim()}})()")
+
+;; Videos Not interested has played or dismissed, so a press never offers one
+;; again; forgotten after 6 hours.
+(def yt-offered (atom {}))
+
+(defn yt-offered-ids []
+  (let [cut (- (System/currentTimeMillis) (* 6 3600 1000))]
+    (keys (swap! yt-offered #(into {} (filter (fn [[_ t]] (> t cut))) %)))))
 
 (defn yt-next! []
   (if-let [t (yt-target)]
@@ -1663,10 +1679,14 @@
       (if-not (:ok r)
         {:ok false :error "YouTube isn't playing a video"}
         ;; then YouTube's top Home suggestion, which the cleaned history now steers
-        (do (js t (str "location.href='" yt "/'"))
+        (let [now-id (some->> (:url t) (re-find #"[?&]v=([\w-]{11})") second)]
+            (when now-id (swap! yt-offered assoc now-id (System/currentTimeMillis)))
+            (js t (str "location.href='" yt "/'"))
             (Thread/sleep 1500)
-            (let [top (wait-for t (format yt-home-top-js (json/generate-string (:channel r))) 12000)
-                  r (assoc r :next top)]
+            (let [top (wait-for t (format yt-home-top-js (json/generate-string (:channel r))
+                                          (json/generate-string (vec (yt-offered-ids)))) 12000)
+                  _ (when-let [id (:id top)] (swap! yt-offered assoc id (System/currentTimeMillis)))
+                  r (assoc r :next (:title top))]
               (println "yt not interested:" (pr-str r))
               r))))
     {:ok false :error "No YouTube tab"}))
