@@ -860,11 +860,21 @@
               {:chrome true :service "nf" :away true})))))
 
 ;; status, plus a link from Reading — read from Chrome's target list only.
+(defn yt-done?
+  "A YouTube history entry watched to the end: within 30s or 5% of it, the
+   start-over-if-done! rule. Unknown length (saved before 2026-10-22): no."
+  [{:keys [time-s dur-s]}]
+  (boolean (and time-s dur-s (pos? dur-s)
+                (or (>= time-s (- dur-s 30)) (>= time-s (* 0.95 dur-s))))))
+
 (defn recent
-  "The first 10 of user's history for the service svc shows under."
+  "The first 10 of user's history for the service svc shows under. YouTube
+   leaves out videos watched to the end (2026-10-22): nothing more to watch,
+   and they stay in the history (Up next still leaves them out)."
   [user svc]
   (when-let [k (and user ({"nf" :nf "yt" :yt "page" :page "rv" :page "rl" :page} svc))]
-    (vec (for [w (take 10 (get-in (load-state) [:history user k]))]
+    (vec (for [w (take 10 (cond->> (get-in (load-state) [:history user k])
+                            (= k :yt) (remove yt-done?)))]
            {:title (or (:title w) (:url w) (:id w))
             :key   (:key w)
             :sub   (case k
@@ -1067,7 +1077,9 @@
               prev (get @last-saved-2 [user :yt])]
           ;; no title: an unavailable or not-yet-loaded video, never saved over a good entry
           (when (and user id sec (not (str/blank? (:title s))) (or (not= id (:id prev)) (>= (abs (- sec (:time-s prev 0))) 15)))
-            (let [m {:id id :title (:title s) :channel (:picked s) :time-s sec}]
+            (let [m (cond-> {:id id :title (:title s) :channel (:picked s) :time-s sec}
+                      ;; its length, so Recent can leave out what was watched to the end
+                      (some-> (:duration s) pos?) (assoc :dur-s (long (/ (:duration s) 1000))))]
               (save-watched-by! user :yt m)
               (add-history! user :yt (assoc m :key id))
               (swap! last-saved-2 assoc [user :yt] m))))))
