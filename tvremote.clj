@@ -1765,8 +1765,26 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
       (future (Thread/sleep 120000) (share-off! id))
       {:ok (boolean id)})))
 
+(def awake-proc "The gnome-session-inhibit holding the screen on, or nil." (atom nil))
+
+(defn keep-awake! [on?]
+  (let [pr @awake-proc alive (and pr (.isAlive (:proc pr)))]
+    (cond
+      (and on? (not alive))
+      (do (reset! awake-proc
+                  (p/process {:out :discard :err :discard
+                              :extra-env {"XDG_RUNTIME_DIR" runtime-dir
+                                          "DBUS_SESSION_BUS_ADDRESS" (str "unix:path=" runtime-dir "/bus")}}
+                             "gnome-session-inhibit" "--inhibit" "idle" "--reason" "tvremote: watching"
+                             "sleep" "infinity"))
+          (println "keep-awake: on"))
+      (and (not on?) alive)
+      (do (p/destroy-tree (:proc pr)) (reset! awake-proc nil) (println "keep-awake: off")))))
+
 (defn act [action q]
   (wake-screen!)
+  ;; before GNOME's re-blank 15s after a wake with no real input (2026-10-22)
+  (try (keep-awake! true) (catch Exception _ nil))
   (if (and (not (chrome-up?)) (not (#{"start" "close-all" "input-lock"} action)))
     {:ok false :error "Chrome isn't running — press Start"}
     ;; looked up only when used: finding it opens a Netflix tab if there's none
@@ -2789,6 +2807,19 @@ showNow();
       (reset! hdmi {:id id :armed armed
                     :playing (boolean (when id (some-> (current-player) player-playing?)))}))))
 
+;; ---------------------------------------------------------------- keep awake
+;; The real cause of the "HDMI drops" (2026-10-22): GNOME blanks the screen
+;; after 15 idle minutes, and phone presses aren't user input, so it blanked
+;; mid-show (drops 15.2 min after the last press) and, once a press had woken
+;; it, blanked again 15s later. A blank turns HDMI off: blue screen, the sound
+;; output goes, the video pauses. Now GNOME is told the session isn't idle
+;; (gnome-session-inhibit, held while it runs) while a video plays or within
+;; 15 min of a press; otherwise it blanks as before.
+
+(defn awake-tick! []
+  (keep-awake! (or (some-> @last-press (> (- (System/currentTimeMillis) (* 15 60 1000))))
+                   (boolean (some-> (current-player) player-playing?)))))
+
 (defn -main []
   (server/run-server handler-15 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
@@ -2824,6 +2855,7 @@ showNow();
               (try (nf-dialog-tick!) (catch Exception e (println "nf-dialog:" (ex-message e))))
               (try (nf-still-watching!) (catch Exception e (println "nf-still-watching:" (ex-message e))))
               (try (hdmi-tick!) (catch Exception e (println "hdmi:" (ex-message e))))
+              (try (awake-tick!) (catch Exception e (println "keep-awake:" (ex-message e))))
               (when (zero? (mod n 5))
                 (try (record-watching-2!)
                      (catch Exception e (println "record-watching:" (ex-message e))))))
