@@ -1610,6 +1610,54 @@
           {:ok true :kept (or (:title (first (get-in (load-state) [:history user (keyword svc)]))) k)})
       {:ok false :error "Nothing playing to keep"})))
 
+;; Next and Not interested (2026-10-21): beside Keep this, for a YouTube video
+;; no phone opened. Press Next a few times, then Keep this. Not interested is
+;; for kids' videos: it tells YouTube (the shared account, so the whole house).
+
+(def yt-next-js
+  "YouTube's own next button: the video it would autoplay."
+  "if(!ok)return false;const b=document.querySelector('.ytp-next-button');
+   if(b&&b.href){b.click();return true}p.nextVideo();return true")
+
+(def yt-nope-js
+  "Dislike the playing video, press Don't recommend channel on a video of the
+   same channel in the side list (the playing one has no such menu), then go
+   to the next. Returns what was done."
+  "(async()=>{const sl=ms=>new Promise(r=>setTimeout(r,ms));
+   const p=document.getElementById('movie_player');
+   if(!(p&&p.getPlayerState&&location.pathname==='/watch'))return {ok:false};
+   const own=document.querySelector('ytd-watch-metadata ytd-channel-name a');
+   const name=own&&own.innerText.trim();
+   const d=document.querySelector('dislike-button-view-model button');
+   let disliked=false;
+   if(d){if(d.getAttribute('aria-pressed')!=='true')d.click();disliked=true}
+   let channel=false;
+   const tile=name&&[...document.querySelectorAll('#secondary yt-lockup-view-model')]
+     .find(t=>t.innerText.includes(name));
+   const mb=tile&&tile.querySelector('button[aria-label*=\"More actions\"]');
+   if(mb){mb.click();
+     for(let i=0;i<15&&!channel;i++){await sl(200);
+       const it=[...document.querySelectorAll('yt-list-item-view-model, ytd-menu-service-item-renderer')]
+         .find(e=>e.offsetParent&&e.innerText.trim()===\"Don't recommend channel\");
+       if(it){it.click();channel=true}}
+     if(!channel)document.body.click()}
+   await sl(300);
+   const b=document.querySelector('.ytp-next-button');
+   if(b&&b.href)b.click();else p.nextVideo();
+   return {ok:true,channel:name,disliked,blocked:channel}})()")
+
+(defn yt-next! []
+  (if-let [t (yt-target)]
+    {:ok (boolean (yt-do t yt-next-js))}
+    {:ok false :error "No YouTube tab"}))
+
+(defn yt-nope! []
+  (if-let [t (yt-target)]
+    (let [r (js t yt-nope-js)]
+      (println "yt not interested:" (pr-str r))
+      (if (:ok r) r {:ok false :error "YouTube isn't playing a video"}))
+    {:ok false :error "No YouTube tab"}))
+
 (def repo-url "https://github.com/chrismurrph/tvremote")
 
 (defn share-html
@@ -1712,6 +1760,8 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         "resume"     (resume! (:svc q) (user-of q) (parse-long (:i q)))
         "forget"     (forget! (:svc q) (user-of q) (:key q))
         "keep"       (keep! (:svc q) (user-of q))
+        "yt-next"    (yt-next!)
+        "yt-nope"    (yt-nope!)
         "shutdown"   (shut-down!)
         "nf-continue" (nf-continue!)
         "tabs"       {:ok true :tabs (user-tabs)}

@@ -82,7 +82,7 @@ button.red{background:var(--red);border-color:var(--red)}
 #whorow{display:flex;justify-content:space-between;align-items:center;margin:-4px 0 6px}
 #local{color:#e0a030;font-size:13px;margin-top:4px}
 #local:empty{display:none}
-#keepbtn{padding:4px 12px;font-size:13px;border-radius:14px;margin-left:6px}
+#keepbtn,.keepbtn2{padding:4px 12px;font-size:13px;border-radius:14px;margin-left:6px}
 #wake{color:var(--soft);font-size:13px}
 #who{padding:4px 12px;font-size:13px;border-radius:14px;color:var(--soft)}
 #whobox{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px}
@@ -477,7 +477,10 @@ function setLocal(s){var el=document.getElementById('local'),t='';s_svc=s.servic
     el.innerHTML='💬 Netflix on the TV asks: '+esc(dg.text)+'<br>'+dg.buttons.map(function(b,i){
       return '<button style="margin:6px 6px 0 0" onclick="nfDialog(this,'+i+')">'+esc(b)+'</button>';}).join('');return;}
   var k=t&&s.keepable,key=t+'|'+(k?1:0);if(key===localKey)return;localKey=key;
-  el.innerHTML=esc(t)+(k?' <button id="keepbtn" onclick="keepThis(this)">Keep this</button>':'');}
+  // Next and Not interested (2026-10-21) beside it, for YouTube only.
+  el.innerHTML=esc(t)+(k?' <button id="keepbtn" onclick="keepThis(this)">Keep this</button>'+
+    (s.service==='yt'?' <button class="keepbtn2" onclick="ytSkip(this,\'yt-next\')">Next</button>'+
+     ' <button class="keepbtn2" onclick="ytSkip(this,\'yt-nope\')">Not interested</button>':''):'');}
 function nfDialog(b,i){flash(b,'busy');call('nf-dialog?b='+i).then(function(r){
     flash(b,r.ok?'done':'fail',900);if(!r.ok)msg(r.error);setTimeout(poll,400);})
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
@@ -491,6 +494,10 @@ function shutDown(b){if(!b.classList.contains('sure')){b.classList.add('sure');b
     setTimeout(function(){b.classList.remove('sure');b.textContent='Shut it down';b.style.background='';b.style.borderColor='';},4000);return;}
   flash(b,'busy');call('shutdown').then(function(r){flash(b,r.ok?'done':'fail',900);
     msg(r.ok?'Shutting down — press its power button to turn it back on':r.error);})
+  .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
+function ytSkip(b,what){flash(b,'busy');call(what).then(function(r){flash(b,r.ok?'done':'fail',900);
+    msg(!r.ok?r.error:what==='yt-next'?'Next':('Not interested'+(r.channel?' — '+r.channel+(r.blocked?' won\'t be recommended':' disliked'):'')));
+    setTimeout(poll,400);})
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
 function keepThis(b){flash(b,'busy');call('keep?svc='+(s_svc||'yt')).then(function(r){
     flash(b,r.ok?'done':'fail',900);msg(r.ok?('Kept: '+r.kept):r.error);setTimeout(poll,400);})
