@@ -1856,7 +1856,9 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         "yt-upnext"  (let [t (yt-target)
                            rows (when (and t (str/includes? (:url t) "/watch")) (js t yt-upnext-js))
                            now-id (some->> t :url (re-find #"[?&]v=([\w-]{11})") second)
-                           rows (mapv (fn [r] (update r :items (fn [is] (vec (remove #(= now-id (:id %)) is))))) rows)]
+                           ;; and what this person already watched (their Recent history)
+                           seen (into #{now-id} (map :id) (get-in (load-state) [:history (user-of q) :yt]))
+                           rows (mapv (fn [r] (update r :items (fn [is] (vec (remove #(seen (:id %)) is))))) rows)]
                        (if (seq rows) {:ok true :kind "titles" :rows rows}
                            {:ok false :error "Nothing playing on YouTube, so no Up next list"}))
         "yt-search"  (assoc (yt-browse-2 (str yt "/results?search_query=" (java.net.URLEncoder/encode (:q q) "UTF-8"))) :ok true)
