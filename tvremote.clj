@@ -513,6 +513,12 @@
    const items=[...m.values()].filter(e=>e.title);
    return items.length?[{title:document.title.replace(/ - YouTube$/,''),items:items}]:[]})()")
 
+(def yt-upnext-js
+  "yt-scrape-js on the side list of the playing video only (Up next, 2026-10-21)."
+  (-> yt-scrape-js
+      (str/replace "document.querySelectorAll('a[href" "document.querySelectorAll('#secondary a[href")
+      (str/replace "{title:document.title.replace(/ - YouTube$/,''),items:items}" "{title:'Up next',items:items}")))
+
 (def yt-kind-js
   "(()=>{if(document.querySelector('a[href*=\"/watch?v=\"]'))return 'titles';
    if(document.querySelector('ytd-message-renderer,ytd-background-promo-renderer,a[href*=\"accounts.google.com/ServiceLogin\"]'))return 'empty';
@@ -1846,6 +1852,11 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         "yt-home"    (assoc (yt-browse-2 (str yt "/")) :ok true)
         "yt-subs"    (assoc (yt-browse-2 (str yt "/feed/subscriptions")) :ok true)
         "yt-history" (assoc (yt-browse-2 (str yt "/feed/history")) :ok true)
+        ;; the TV's right-hand list, read without leaving the video
+        "yt-upnext"  (let [t (yt-target)
+                           rows (when (and t (str/includes? (:url t) "/watch")) (js t yt-upnext-js))]
+                       (if (seq rows) {:ok true :kind "titles" :rows rows}
+                           {:ok false :error "Nothing playing on YouTube, so no Up next list"}))
         "yt-search"  (assoc (yt-browse-2 (str yt "/results?search_query=" (java.net.URLEncoder/encode (:q q) "UTF-8"))) :ok true)
         "yt-play"    (do (try (record-watching-2!) (catch Exception _ nil))
                          (set-owner! "yt" (user-of q))
@@ -2484,7 +2495,7 @@ showNow();
 
 (def list-kinds
   {"browse" "results" "shows" "results" "movies" "results" "genre" "results" "search" "results"
-   "yt-home" "results" "yt-subs" "results" "yt-history" "results" "yt-search" "results"
+   "yt-home" "results" "yt-subs" "results" "yt-history" "results" "yt-search" "results" "yt-upnext" "results"
    "page-videos" "videos" "page-links" "links" "tabs" "tabs"})
 
 (defn handler-11
