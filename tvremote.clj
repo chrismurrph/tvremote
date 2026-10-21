@@ -1621,10 +1621,10 @@
 
 (def yt-nope-js
   "Dislike the playing video, press Don't recommend channel on a video of the
-   same channel in the side list (the playing one has no such menu), then play
-   the first side-list video from another channel. Not YouTube's next button:
-   that keeps to the same channel's chain, block or not (2026-10-21, three
-   presses gave three more Ms Rachel). Returns what was done."
+   same channel in the side list (the playing one has no such menu). Returns
+   what was done; yt-nope! then goes to Home. Not the side list or YouTube's
+   next button: next to a kids' video both are all kids' videos (2026-10-21:
+   Next gave three more Ms Rachel, the side list ten more kids' channels)."
   "(async()=>{const sl=ms=>new Promise(r=>setTimeout(r,ms));
    const p=document.getElementById('movie_player');
    if(!(p&&p.getPlayerState&&location.pathname==='/watch'))return {ok:false};
@@ -1643,12 +1643,14 @@
          .find(e=>e.offsetParent&&e.innerText.trim()===\"Don't recommend channel\");
        if(it){it.click();channel=true}}
      if(!channel)document.body.click()}
-   await sl(300);
-   const other=[...document.querySelectorAll('#secondary yt-lockup-view-model')]
-     .find(t=>name&&!t.innerText.includes(name)&&t.querySelector('a[href*=\"/watch?v=\"]'));
-   if(other)other.querySelector('a[href*=\"/watch?v=\"]').click();
-   else{const b=document.querySelector('.ytp-next-button');if(b&&b.href)b.click();else p.nextVideo()}
-   return {ok:true,channel:name,disliked,blocked:channel,left:!!other}})()")
+   return {ok:true,channel:name,disliked,blocked:channel}})()")
+
+(def yt-home-top-js
+  "Click YouTube Home's first video that isn't from channel %s (a JSON string)."
+  "(()=>{const name=%s;const t=[...document.querySelectorAll('ytd-rich-item-renderer yt-lockup-view-model')]
+   .find(r=>!(name&&r.innerText.includes(name))&&r.querySelector('a[href*=\"/watch?v=\"]'));
+   if(!t)return null;const a=t.querySelector('a[href*=\"/watch?v=\"]');a.click();
+   return (t.querySelector('h3')||a).innerText.trim()})()")
 
 (defn yt-next! []
   (if-let [t (yt-target)]
@@ -1658,8 +1660,15 @@
 (defn yt-nope! []
   (if-let [t (yt-target)]
     (let [r (js t yt-nope-js)]
-      (println "yt not interested:" (pr-str r))
-      (if (:ok r) r {:ok false :error "YouTube isn't playing a video"}))
+      (if-not (:ok r)
+        {:ok false :error "YouTube isn't playing a video"}
+        ;; then YouTube's top Home suggestion, which the cleaned history now steers
+        (do (js t (str "location.href='" yt "/'"))
+            (Thread/sleep 1500)
+            (let [top (wait-for t (format yt-home-top-js (json/generate-string (:channel r))) 12000)
+                  r (assoc r :next top)]
+              (println "yt not interested:" (pr-str r))
+              r))))
     {:ok false :error "No YouTube tab"}))
 
 (def repo-url "https://github.com/chrismurrph/tvremote")
