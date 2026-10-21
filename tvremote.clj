@@ -1621,8 +1621,10 @@
 
 (def yt-nope-js
   "Dislike the playing video, press Don't recommend channel on a video of the
-   same channel in the side list (the playing one has no such menu), then go
-   to the next. Returns what was done."
+   same channel in the side list (the playing one has no such menu), then play
+   the first side-list video from another channel. Not YouTube's next button:
+   that keeps to the same channel's chain, block or not (2026-10-21, three
+   presses gave three more Ms Rachel). Returns what was done."
   "(async()=>{const sl=ms=>new Promise(r=>setTimeout(r,ms));
    const p=document.getElementById('movie_player');
    if(!(p&&p.getPlayerState&&location.pathname==='/watch'))return {ok:false};
@@ -1642,9 +1644,11 @@
        if(it){it.click();channel=true}}
      if(!channel)document.body.click()}
    await sl(300);
-   const b=document.querySelector('.ytp-next-button');
-   if(b&&b.href)b.click();else p.nextVideo();
-   return {ok:true,channel:name,disliked,blocked:channel}})()")
+   const other=[...document.querySelectorAll('#secondary yt-lockup-view-model')]
+     .find(t=>name&&!t.innerText.includes(name)&&t.querySelector('a[href*=\"/watch?v=\"]'));
+   if(other)other.querySelector('a[href*=\"/watch?v=\"]').click();
+   else{const b=document.querySelector('.ytp-next-button');if(b&&b.href)b.click();else p.nextVideo()}
+   return {ok:true,channel:name,disliked,blocked:channel,left:!!other}})()")
 
 (defn yt-next! []
   (if-let [t (yt-target)]
