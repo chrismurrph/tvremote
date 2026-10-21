@@ -202,7 +202,7 @@ body.offline button,body.offline input{opacity:.4;pointer-events:none}
 
 <div id="find">
 <div id="searchbox">
-  <input id="q" type="search" placeholder="Search Netflix" enterkeyhint="search" onkeydown="if(event.key==='Enter')search(document.getElementById('gobtn'))">
+  <input id="q" type="search" placeholder="Search Netflix" enterkeyhint="search" oninput="saveQ()" onkeydown="if(event.key==='Enter')search(document.getElementById('gobtn'))">
   <button id="gobtn" onclick="search(this)">Search</button>
 </div>
 <div class="pad" id="nfbtns">
@@ -388,7 +388,11 @@ function setControls(raw){var reading=(raw==='page'||raw==='rl'),ph=(raw==='ph')
   document.getElementById('vidpad').style.display=(reading||ph)?'none':'';
   document.getElementById('readpad').style.display=reading?'':'none';}
 var wantOpen=false; // Reading pressed with nothing to read: show the link box anyway
-var lastQ={};
+// Each service's last search text, kept in this phone's localStorage like the
+// name, so a refresh doesn't lose it (2026-10-21).
+var lastQ={};try{lastQ=JSON.parse(localStorage.getItem('tvremote-q'))||{};}catch(e){}
+function saveQ(){if(!svc)return;lastQ[svc]=document.getElementById('q').value;
+  try{localStorage.setItem('tvremote-q',JSON.stringify(lastQ));}catch(e){}}
 function setSvc(s){var changed=(s!==svc),prevSvc=svc;svc=s;
   ['nf','yt','page'].forEach(function(k){document.getElementById('svc-'+k).classList.toggle('on',s===k);});
   document.getElementById('svc-photos').classList.toggle('on',s==='ph');
