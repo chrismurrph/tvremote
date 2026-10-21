@@ -316,6 +316,16 @@
      r.episode='S'+s.seq+' E'+e.seq;r.title=v.title+' · E'+e.seq+(e.title?' · '+e.title:'')}}));
    return r}catch(e){return null}})()"))
 
+(def nf-last-js
+  "True when what's playing is a film, or the last episode of the last season:
+   after it there's nothing more to watch (2026-10-22, for Recent)."
+  (str "(()=>{try{const p=" player-js ";if(!p)return null;const mid=p.getMovieId();
+   const m=netflix.appContext.state.playerApp.getState().videoPlayer.videoMetadata[mid];
+   const v=m&&m._metadataObject&&m._metadataObject.video;if(!v)return null;
+   const ss=v.seasons||[];if(!ss.length)return true;
+   const eps=ss[ss.length-1].episodes||[];const e=eps[eps.length-1];
+   return !!e&&(e.id===mid||e.episodeId===mid)}catch(e){return null}})()"))
+
 (def status-js
   (str "const base={url:location.href,title:" nf-title-js "};
    let ep=null;try{const s=netflix.falcorCache.videos[p.getMovieId()].summary.value;
@@ -867,6 +877,12 @@
   (boolean (and time-s dur-s (pos? dur-s)
                 (or (>= time-s (- dur-s 30)) (>= time-s (* 0.95 dur-s))))))
 
+(defn nf-done?
+  "A Netflix history entry with nothing more to watch: a film or a show's last
+   episode, within 30s or 5% of its end. Saved before 2026-10-22: no."
+  [w]
+  (boolean (and (:last? w) (yt-done? w))))
+
 (defn recent
   "The first 10 of user's history for the service svc shows under. YouTube
    leaves out videos watched to the end (2026-10-22): nothing more to watch,
@@ -874,7 +890,8 @@
   [user svc]
   (when-let [k (and user ({"nf" :nf "yt" :yt "page" :page "rv" :page "rl" :page} svc))]
     (vec (for [w (take 10 (cond->> (get-in (load-state) [:history user k])
-                            (= k :yt) (remove yt-done?)))]
+                            (= k :yt) (remove yt-done?)
+                            (= k :nf) (remove nf-done?)))]
            {:title (or (:title w) (:url w) (:id w))
             :key   (:key w)
             :sub   (case k
@@ -1063,7 +1080,10 @@
           (when (and user
                      (or (not= u (:url prev)) (and title (not= title (:title prev)))
                          (and sec (>= (abs (- sec (:time-s prev 0))) 15))))
-            (let [m {:url u :title title :time-s sec}]
+            (let [m (cond-> {:url u :title title :time-s sec}
+                      ;; length and last-or-film, so Recent can leave out a finished show
+                      (some-> (:duration s) pos?) (assoc :dur-s (long (/ (:duration s) 1000))
+                                                         :last? (true? (try (js n nf-last-js) (catch Exception _ nil)))))]
               (save-watched-by! user :nf m)
               (add-history! user :nf (assoc m :key (or show (some-> title (str/split #" · ") first) u)
                                               :episode (:episode s)))
