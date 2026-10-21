@@ -82,7 +82,8 @@ button.red{background:var(--red);border-color:var(--red)}
 #whorow{display:flex;justify-content:space-between;align-items:center;margin:-4px 0 6px}
 #local{color:#e0a030;font-size:13px;margin-top:4px}
 #local:empty{display:none}
-#keepbtn,.keepbtn2{padding:4px 12px;font-size:13px;border-radius:14px;margin-left:6px}
+.keeprow{display:flex;gap:8px;margin-top:8px}
+.keeprow button{flex:1;padding:10px 6px;font-size:15px;border-radius:12px}
 #wake{color:var(--soft);font-size:13px}
 #who{padding:4px 12px;font-size:13px;border-radius:14px;color:var(--soft)}
 #whobox{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px}
@@ -481,9 +482,11 @@ function setLocal(s){var el=document.getElementById('local'),t='';s_svc=s.servic
       return '<button style="margin:6px 6px 0 0" onclick="nfDialog(this,'+i+')">'+esc(b)+'</button>';}).join('');return;}
   var k=t&&s.keepable,key=t+'|'+(k?1:0)+'|'+who;if(key===localKey)return;localKey=key;
   // Next and Not interested (2026-10-21) beside it, for YouTube only.
-  el.innerHTML=esc(t)+(k?(may(noKeep)?' <button id="keepbtn" onclick="keepThis(this)">Keep this</button>':'')+
-    (s.service==='yt'?' <button class="keepbtn2" onclick="ytSkip(this,\'yt-next\')">Next</button>'+
-     (may(noNope)?' <button class="keepbtn2" onclick="ytSkip(this,\'yt-nope\')">Not interested</button>':''):''):'');}
+  // the buttons on a row of their own under the line (2026-10-21)
+  var bs=!k?'':(may(noKeep)?'<button id="keepbtn" onclick="keepThis(this)">Keep this</button>':'')+
+    (s.service==='yt'?'<button class="keepbtn2" onclick="ytSkip(this,\'yt-next\')">Next</button>'+
+     (may(noNope)?'<button class="keepbtn2" onclick="ytSkip(this,\'yt-nope\')">Not interested</button>':''):'');
+  el.innerHTML=esc(t)+(bs?'<div class="keeprow">'+bs+'</div>':'');}
 function nfDialog(b,i){flash(b,'busy');call('nf-dialog?b='+i).then(function(r){
     flash(b,r.ok?'done':'fail',900);if(!r.ok)msg(r.error);setTimeout(poll,400);})
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
