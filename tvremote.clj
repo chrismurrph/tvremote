@@ -883,15 +883,21 @@
   [w]
   (boolean (and (:last? w) (yt-done? w))))
 
+(defn shown-history
+  "user's history for k (:nf :yt :page) as Recent shows it: without what was
+   ✕'d (:hidden) or watched to the end. Those stay in the history, so Up next
+   still leaves them out (2026-10-22). Recent and resume! both use this, so a
+   tap's index points at the line the phone shows."
+  [user k]
+  (cond->> (remove :hidden (get-in (load-state) [:history user k]))
+    (= k :yt) (remove yt-done?)
+    (= k :nf) (remove nf-done?)))
+
 (defn recent
-  "The first 10 of user's history for the service svc shows under. YouTube
-   leaves out videos watched to the end (2026-10-22): nothing more to watch,
-   and they stay in the history (Up next still leaves them out)."
+  "The first 10 of user's history for the service svc shows under."
   [user svc]
   (when-let [k (and user ({"nf" :nf "yt" :yt "page" :page "rv" :page "rl" :page} svc))]
-    (vec (for [w (take 10 (cond->> (get-in (load-state) [:history user k])
-                            (= k :yt) (remove yt-done?)
-                            (= k :nf) (remove nf-done?)))]
+    (vec (for [w (take 10 (shown-history user k))]
            {:title (or (:title w) (:url w) (:id w))
             :key   (:key w)
             :sub   (case k
@@ -1287,7 +1293,7 @@
   "Load entry i of user's recent svc (\"nf\", \"yt\" or \"page\"): a show or
    video paused at its place, a page at its scroll position."
   [svc user i]
-  (if-let [w (and user (nth (get-in (load-state) [:history user (keyword svc)]) i nil))]
+  (if-let [w (and user (nth (vec (shown-history user (keyword svc))) i nil))]
     (do (try (record-watching-2!) (catch Exception _ nil))
         (pause-all)
         (set-owner! svc user)
@@ -1305,7 +1311,9 @@
     {:ok false :error "That's no longer in the list"}))
 
 (defn forget!
-  "Take the entry keyed k out of user's recent svc (the phone's ✕, 2026-10-12).
+  "Hide the entry keyed k from user's recent svc (the phone's ✕, 2026-10-12;
+   hidden rather than removed since 2026-10-22, so Up next still knows it).
+   Watching it again brings it back.
    Only the list changes: nothing on the TV stops, and Netflix's and YouTube's
    own histories are left alone. If it's the item they opened, it stops being
    theirs too, or the 15s check would put it straight back."
@@ -1314,8 +1322,9 @@
     (do (when (= {:user user :key k} (get @opened svc))
           (swap! opened dissoc svc))
         (update-state! (fn [st] (-> st
+                                    ;; hidden, not removed: Up next still leaves it out (2026-10-22)
                                     (update-in [:history user (keyword svc)]
-                                               #(vec (remove (fn [w] (= k (:key w))) %)))
+                                               #(mapv (fn [w] (cond-> w (= k (:key w)) (assoc :hidden true))) %))
                                     (assoc :opened @opened))))
         {:ok true})
     {:ok false :error "Nothing to remove"}))
