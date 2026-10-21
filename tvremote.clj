@@ -2728,6 +2728,67 @@ showNow();
                  (get-in @ph-files [(:rel n) :rotate]) (assoc :rotate (get-in @ph-files [(:rel n) :rotate])))))
       :else (handler-14 req))))
 
+;; ---------------------------------------------------------------- HDMI drops
+;; The HDMI link to the TV drops for a few seconds (blue screen), often ~15s
+;; after play following a break. Its sound output vanishes and comes back with
+;; a new id, and YouTube/Netflix pause because their sound has nowhere to go.
+;; The tick watches the HDMI sink; when it went away or changed while a video
+;; was playing, and no phone pressed anything since, it presses play once the
+;; sink is back (2026-10-22).
+
+(defn hdmi-sink-id
+  "The HDMI sound output's id, or nil while there is none."
+  []
+  (try (some->> (:out (p/shell {:out :string :err :string :continue true
+                                :extra-env {"XDG_RUNTIME_DIR" runtime-dir}}
+                               "pactl" "list" "short" "sinks"))
+                str/split-lines
+                (some #(when (str/includes? % "hdmi") (first (str/split % #"\t")))))
+       (catch Exception _ nil)))
+
+(defn current-player
+  "The tab of the video service that's current, and how to ask/play it."
+  []
+  (case @service
+    "yt" (when-let [t (yt-target)] {:t t :yt true})
+    "rv" (when-let [t (rv-target)] {:t t :yt true})
+    "nf" (when-let [t (first (filter (partial on-site? "netflix.com") (targets)))] {:t t})
+    nil))
+
+(defn player-playing? [{:keys [t yt]}]
+  (boolean (if yt (yt-do t "return ok&&[1,3].includes(p.getPlayerState())")
+               (player-do t "return !!(p&&!p.isPaused())"))))
+
+(defn player-play! [{:keys [t yt]}]
+  (if yt (yt-do t "if(ok)p.playVideo();return ok")
+      (player-do t "if(p&&p.isPaused())p.play();return !!p")))
+
+(def hdmi "{:id last sink id, :playing what the last tick saw, :armed {:at ms}}" (atom {}))
+
+(defn hdmi-tick! []
+  (let [id (hdmi-sink-id)
+        {:keys [playing armed] old :id} @hdmi
+        drop? (or (nil? id) (and old (not= id old)))]
+    (cond
+      ;; it went (or came back as a new one) while a video was playing
+      (and drop? playing (not armed))
+      (do (println "hdmi: sound output" (if id (str "changed " old " -> " id) "gone") "while playing")
+          (swap! hdmi assoc :id id :armed {:at (System/currentTimeMillis)} :playing false)
+          ;; back already: resume on the next tick
+          )
+      (and armed id)
+      (let [pl (current-player)]
+        (if (and pl (or (nil? @last-press) (< @last-press (:at armed))))
+          (when-not (player-playing? pl)
+            (Thread/sleep 1500)
+            (player-play! pl)
+            (println "hdmi: back, pressed play"))
+          (println "hdmi: back, a phone pressed since, left alone"))
+        (reset! hdmi {:id id :armed nil :playing (boolean (some-> pl player-playing?))}))
+      :else
+      (reset! hdmi {:id id :armed armed
+                    :playing (boolean (when id (some-> (current-player) player-playing?)))}))))
+
 (defn -main []
   (server/run-server handler-15 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
@@ -2762,6 +2823,7 @@ showNow();
               (try (photos-guard!) (catch Exception e (println "photos-guard:" (ex-message e))))
               (try (nf-dialog-tick!) (catch Exception e (println "nf-dialog:" (ex-message e))))
               (try (nf-still-watching!) (catch Exception e (println "nf-still-watching:" (ex-message e))))
+              (try (hdmi-tick!) (catch Exception e (println "hdmi:" (ex-message e))))
               (when (zero? (mod n 5))
                 (try (record-watching-2!)
                      (catch Exception e (println "record-watching:" (ex-message e))))))
