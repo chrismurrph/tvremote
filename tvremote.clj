@@ -877,6 +877,12 @@
   (boolean (and time-s dur-s (pos? dur-s)
                 (or (>= time-s (- dur-s 30)) (>= time-s (* 0.95 dur-s))))))
 
+(def yt-category-js
+  "The playing video's YouTube category (\"Music\", \"News & Politics\", ...)."
+  "try{return ok?p.getPlayerResponse().microformat.playerMicroformatRenderer.category:null}catch(e){return null}")
+
+(defn music? [w] (= "Music" (:category w)))
+
 (defn nf-done?
   "A Netflix history entry with nothing more to watch: a film or a show's last
    episode, within 30s or 5% of its end. Saved before 2026-10-22: no."
@@ -890,7 +896,8 @@
    tap's index points at the line the phone shows."
   [user k]
   (cond->> (remove :hidden (get-in (load-state) [:history user k]))
-    (= k :yt) (remove yt-done?)
+    ;; music is for hearing again: a favourite stays (2026-10-23)
+    (= k :yt) (remove #(and (yt-done? %) (not (music? %))))
     (= k :nf) (remove nf-done?)))
 
 (defn recent
@@ -1105,7 +1112,9 @@
           (when (and user id sec (not (str/blank? (:title s))) (or (not= id (:id prev)) (>= (abs (- sec (:time-s prev 0))) 15)))
             (let [m (cond-> {:id id :title (:title s) :channel (:picked s) :time-s sec}
                       ;; its length, so Recent can leave out what was watched to the end
-                      (some-> (:duration s) pos?) (assoc :dur-s (long (/ (:duration s) 1000))))]
+                      (some-> (:duration s) pos?) (assoc :dur-s (long (/ (:duration s) 1000)))
+                      ;; YouTube's category: "Music" is kept on Recent and in Up next
+                      true (assoc :category (try (yt-do y yt-category-js) (catch Exception _ nil))))]
               (save-watched-by! user :yt m)
               (add-history! user :yt (assoc m :key id))
               (swap! last-saved-2 assoc [user :yt] m))))))
@@ -1916,7 +1925,8 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                            rows (when (and t (str/includes? (:url t) "/watch")) (js t yt-upnext-js))
                            now-id (some->> t :url (re-find #"[?&]v=([\w-]{11})") second)
                            ;; and what this person already watched (their Recent history)
-                           seen (into #{now-id} (map :id) (get-in (load-state) [:history (user-of q) :yt]))
+                           seen (into #{now-id} (comp (remove music?) (map :id))
+                                      (get-in (load-state) [:history (user-of q) :yt]))
                            rows (mapv (fn [r] (update r :items (fn [is] (vec (remove #(seen (:id %)) is))))) rows)]
                        (if (seq rows) {:ok true :kind "titles" :rows rows}
                            {:ok false :error "Nothing playing on YouTube, so no Up next list"}))
