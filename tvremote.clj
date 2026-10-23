@@ -2821,6 +2821,27 @@ showNow();
                  (get-in @ph-files [(:rel n) :rotate]) (assoc :rotate (get-in @ph-files [(:rel n) :rotate])))))
       :else (handler-14 req))))
 
+;; ---------------------------------------------------------------- overview
+;; GNOME opens in the Activities overview after login, so after a power cut
+;; (the machine starts by itself on AC) the TV showed a row of app icons until
+;; someone pressed the Windows key (2026-10-24). The tick closes it, unless the
+;; TV computer's own keyboard or mouse was used in the last 2 minutes.
+
+(defn gnome-shell-prop [& args]
+  (try (:out (apply p/shell {:out :string :err :string :continue true
+                             :extra-env {"XDG_RUNTIME_DIR" runtime-dir
+                                         "DBUS_SESSION_BUS_ADDRESS" (str "unix:path=" runtime-dir "/bus")}}
+                    "gdbus" "call" "--session" "--dest" "org.gnome.Shell" "--object-path" "/org/gnome/Shell"
+                    "--method" args))
+       (catch Exception _ nil)))
+
+(defn overview-tick! []
+  (when (and (some-> (gnome-shell-prop "org.freedesktop.DBus.Properties.Get" "org.gnome.Shell" "OverviewActive")
+                     (str/includes? "true"))
+             (not (some-> @last-touch (> (- (System/currentTimeMillis) (* 2 60 1000))))))
+    (gnome-shell-prop "org.freedesktop.DBus.Properties.Set" "org.gnome.Shell" "OverviewActive" "<false>")
+    (println "overview: closed it")))
+
 ;; ---------------------------------------------------------------- HDMI drops
 ;; The HDMI link to the TV drops for a few seconds (blue screen), often ~15s
 ;; after play following a break. Its sound output vanishes and comes back with
@@ -2923,6 +2944,8 @@ showNow();
   ;; place. One loop, not one per job.
   (future (loop [n 1]
             (Thread/sleep 3000)
+            ;; Chrome or not: after a power cut it may not be started yet
+            (try (overview-tick!) (catch Exception e (println "overview:" (ex-message e))))
             (when (chrome-up?)
               (try (hide-yt-chat!) (catch Exception _ nil))
               (try (hide-cursor-2!) (catch Exception _ nil))
