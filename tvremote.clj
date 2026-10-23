@@ -2161,7 +2161,10 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
    something to watch (a few seconds on, once the player is there)."
   [req]
   (let [starts? (#{"/act/play" "/act/yt-play" "/act/resume" "/act/switch" "/act/start"
-                   "/act/profile" "/act/page-video" "/act/yt-next" "/act/yt-nope"} (:uri req))
+                   "/act/profile" "/act/page-video" "/act/yt-next" "/act/yt-nope"
+                   ;; a plain play: the last person's level was kept until a Vol
+                   ;; press (2026-10-24); a new person (/act/who) is in handler-9
+                   "/act/toggle"} (:uri req))
         ;; from the start of the press, not after it (2026-10-23)
         _   (when starts? (volume-watch! (:u (query req))))
         res (handler-6 req)]
@@ -2541,7 +2544,8 @@ showNow();
                               (when (and (:ok r) (user-of q))
                                 (update-state! #(assoc-in % [:last-svc (user-of q)] "ph")))
                               r))
-      "/act/who"        (ph (who! (user-of q)))
+      ;; and their own volume, at once (2026-10-24)
+      "/act/who"        (ph (let [r (who! (user-of q))] (volume-watch! (user-of q)) r))
       "/act/ph-step"    (ph (ph-step! (or (parse-long (str (:n q))) 1) (= "1" (:month q))))
       "/act/ph-archive" (ph (ph-archive!))
       "/act/ph-undo"    (ph (ph-undo!))
