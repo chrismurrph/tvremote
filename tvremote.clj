@@ -2141,15 +2141,32 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         (set-volume! want)
         (println "volume:" (or u "-") cur "->" want)))))
 
+(defn volume-watch!
+  "volume-floor-2! every 250ms for 10s, from the moment of a press: a newly
+   loaded YouTube player starts at YouTube's own saved 5%, and the old single
+   check 4s after the press left a video too quiet for those seconds
+   (2026-10-23). Each check changes nothing once the volume is right, and
+   reads the person's volume afresh, so a Vol press meanwhile isn't undone."
+  [u]
+  (future
+    (let [end (+ (System/currentTimeMillis) 10000)]
+      (loop []
+        (try (volume-floor-2! u) (catch Exception _ nil))
+        (when (< (System/currentTimeMillis) end)
+          (Thread/sleep 250)
+          (recur))))))
+
 (defn handler-7
   "handler-6, plus volume-floor! after each press that starts or loads
    something to watch (a few seconds on, once the player is there)."
   [req]
-  (let [res (handler-6 req)]
-    (when (#{"/act/play" "/act/yt-play" "/act/resume" "/act/switch" "/act/start"
-             "/act/profile" "/act/page-video"} (:uri req))
-      (future (Thread/sleep 4000)
-              (try (volume-floor-2! (:u (query req))) (catch Exception e (println "volume-floor:" (ex-message e))))))
+  (let [starts? (#{"/act/play" "/act/yt-play" "/act/resume" "/act/switch" "/act/start"
+                   "/act/profile" "/act/page-video" "/act/yt-next" "/act/yt-nope"} (:uri req))
+        ;; from the start of the press, not after it (2026-10-23)
+        _   (when starts? (volume-watch! (:u (query req))))
+        res (handler-6 req)]
+    (when starts?
+      (volume-watch! (:u (query req))))
     (when (= "/act/volume" (:uri req))
       (future (Thread/sleep 300)
               (try (remember-volume! (:u (query req))) (catch Exception e (println "remember-volume:" (ex-message e))))))
