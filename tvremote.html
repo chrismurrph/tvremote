@@ -259,7 +259,7 @@ function phArchive(b){if(!b.classList.contains('sure')){b.classList.add('sure');
 // The names come from the server's :people setting; with none set, the phone
 // asks for one. What's kept and sent is a plain lower-case form of the name.
 function slug(n){return String(n).toLowerCase().replace(/[^a-z]/g,'').slice(0,20);}
-function setWho(n){n=slug(n);if(!n)return;var was=who;who=n;try{localStorage.setItem('tvremote-who',n);}catch(e){}showWho();
+function setWho(n){n=slug(n);if(!n)return;var was=who;who=n;if(was!==n)clearLists();try{localStorage.setItem('tvremote-who',n);}catch(e){}showWho();
   // a new name: the TV goes to what they used last (2026-10-16)
   if(n!==was&&chromeUp){msg('Switching the TV to '+n.charAt(0).toUpperCase()+n.slice(1)+'\'s last…');whoBusy=true;
     call('who').then(function(r){whoBusy=false;msg(r.ok?(r.loaded?('Loaded '+r.loaded+' — paused, ready to play'):''):r.error);recentKey='';setTimeout(poll,400);})
@@ -560,8 +560,11 @@ function renderTabs(tabs){
 // too. Results only under the service they're for; videos and links only
 // while Reading.
 var listSeq=-1;
+// A new person on the TV (2026-10-24): the last one's lists go.
+function clearLists(){['results','genres','pgvideos'].forEach(function(id){var e=document.getElementById(id);if(e)e.innerHTML='';});msg('');}
 function syncList(s){var n=s['list-seq'];if(n==null||n===listSeq)return;listSeq=n;
-  fetch('/list').then(function(r){return r.json()}).then(function(l){if(l.seq!==listSeq||!l.r)return;
+  fetch('/list').then(function(r){return r.json()}).then(function(l){if(l.seq!==listSeq)return;
+    if(l.kind==='clear'){clearLists();return;}if(!l.r)return;
     if(l.kind==='results'){if(l.svc===svc)render(l.r);}
     else if(l.kind==='videos'){if(svc==='page')renderVideos(l.r.videos||[]);}
     else if(l.kind==='links'){if(svc==='page')renderLinks(l.r.links||[]);}

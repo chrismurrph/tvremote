@@ -2517,12 +2517,16 @@ showNow();
 ;; last (state.edn :last-svc), loaded with their own place, as Take over does,
 ;; so the phone's buttons are theirs. Nothing used yet: nothing changes.
 
+(def shared-list "The last list: {:seq n :kind k :svc s :r reply}." (atom {:seq 0}))
+
 (defn who!
   "Switch the TV to user's last service, with their last show, video, page
    or photo."
   [user]
   (let [svc (and user (get-in (load-state) [:last-svc user]))]
     (println "who:" user "->" (or svc "nothing yet"))
+    ;; the last person's list (results, Up next, links) goes from every phone (2026-10-24)
+    (swap! shared-list (fn [{n :seq}] {:seq (inc n) :kind "clear"}))
     (cond
       (nil? svc)  {:ok true}
       (= "ph" svc) (ph-open!)
@@ -2585,7 +2589,6 @@ showNow();
 ;; links, the TV's tabs) is kept here with a number; /status gives out the
 ;; number, and a phone that hasn't drawn that one fetches /list.
 
-(def shared-list "The last list: {:seq n :kind k :svc s :r reply}." (atom {:seq 0}))
 
 (def list-kinds
   {"browse" "results" "shows" "results" "movies" "results" "genre" "results" "search" "results"
