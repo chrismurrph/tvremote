@@ -230,7 +230,7 @@ function flash(b,cls,ms){b.classList.remove('busy','done','fail');b.classList.ad
 // who: the person holding this phone, kept in its localStorage and sent with
 // every action as u=, so the TV saves and loads each person's own last watched.
 var who=null;try{who=localStorage.getItem('tvremote-who');}catch(e){}
-function showWho(){document.getElementById('who').textContent=who?('👤 '+who.charAt(0).toUpperCase()+who.slice(1)):'👤 Who?';
+function showWho(){useQFor(who);document.getElementById('who').textContent=who?('👤 '+who.charAt(0).toUpperCase()+who.slice(1)):'👤 Who?';
   document.getElementById('whobox').style.display=who?'none':'';
   document.body.classList.toggle('nowho',!who);showReading();}
 // Reading only for the names the server lists (:reading? in config.edn,
@@ -396,9 +396,17 @@ function setControls(raw){var reading=(raw==='page'||raw==='rl'),ph=(raw==='ph')
 var wantOpen=false; // Reading pressed with nothing to read: show the link box anyway
 // Each service's last search text, kept in this phone's localStorage like the
 // name, so a refresh doesn't lose it (2026-10-21).
-var lastQ={};try{lastQ=JSON.parse(localStorage.getItem('tvremote-q'))||{};}catch(e){}
-function saveQ(){if(!svc)return;lastQ[svc]=document.getElementById('q').value;
-  try{localStorage.setItem('tvremote-q',JSON.stringify(lastQ));}catch(e){}}
+// Since 2026-10-25 per person on this phone ('tvremote-q2' {who {svc text}}):
+// switching name brings back that person's last search, not the last one's.
+var lastQ={},allQ={},qWho=null;
+try{allQ=JSON.parse(localStorage.getItem('tvremote-q2'))||{};}catch(e){}
+function useQFor(w){if(!w||w===qWho)return;
+  // the old one-per-phone text goes to whoever is first seen here
+  if(!allQ[w]&&!Object.keys(allQ).length){try{allQ[w]=JSON.parse(localStorage.getItem('tvremote-q'))||{};}catch(e){}}
+  qWho=w;lastQ=allQ[w]=allQ[w]||{};
+  var qb=document.getElementById('q');if(qb&&svc)qb.value=lastQ[svc]||'';}
+function saveQ(){if(!svc||!qWho)return;lastQ[svc]=document.getElementById('q').value;
+  try{localStorage.setItem('tvremote-q2',JSON.stringify(allQ));}catch(e){}}
 function setSvc(s){var changed=(s!==svc),prevSvc=svc;svc=s;
   ['nf','yt','page'].forEach(function(k){document.getElementById('svc-'+k).classList.toggle('on',s===k);});
   document.getElementById('svc-photos').classList.toggle('on',s==='ph');
