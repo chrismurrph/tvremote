@@ -1922,7 +1922,8 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         "yt-history" (assoc (yt-browse-2 (str yt "/feed/history")) :ok true)
         ;; newest first: YouTube adds each save at the bottom (2026-10-25)
         "yt-later"   (-> (yt-browse-2 (str yt "/playlist?list=WL"))
-                         (update :rows (fn [rs] (mapv #(update % :items (comp vec reverse)) rs)))
+                         ;; and only the 10 newest: the top one is nearly always the one wanted
+                         (update :rows (fn [rs] (mapv #(update % :items (fn [is] (vec (take 10 (reverse is))))) rs)))
                          (assoc :ok true))
         ;; the TV's right-hand list, read without leaving the video
         "yt-upnext"  (let [t (yt-target)
