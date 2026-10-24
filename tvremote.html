@@ -216,6 +216,7 @@ body.offline button,body.offline input{opacity:.4;pointer-events:none}
   <button onclick="load(this,'yt-subs')">📬 Subscriptions</button>
   <button onclick="load(this,'yt-history')">🕘 History</button>
   <button onclick="load(this,'yt-upnext')">⏭ Up next</button>
+  <button onclick="load(this,'yt-later')">🕒 Watch later</button>
 </div>
 <div id="genres"></div>
 <div id="msg"></div>
@@ -285,7 +286,7 @@ function setBusy(d){busy=Math.max(0,busy+d);document.body.classList.toggle('busy
 // the seconds counting, so a slow Home doesn't look like nothing happening.
 function workLabel(path){var a=path.split('?')[0];
   if(/^(browse|shows|movies|genre|search)$/.test(a))return 'Reading Netflix on the TV';
-  if(/^yt-(home|subs|history|search|upnext)$/.test(a))return 'Reading YouTube on the TV';
+  if(/^yt-(home|subs|history|search|upnext|later)$/.test(a))return 'Reading YouTube on the TV';
   return {profile:'Opening the profile',switch:'Switching the TV',resume:'Loading it on the TV',
     start:'Starting Chrome on the TV',play:'Starting it on the TV','yt-play':'Starting it on the TV',
     'page-link':'Opening the link',share:'Putting the QR code on the TV','share-off':'Taking the QR code down','input-lock':'Changing the lock',open:'Opening the page','page-video':'Starting the video'}[a]||'Working on the TV';}

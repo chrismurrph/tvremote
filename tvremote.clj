@@ -1920,6 +1920,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         "yt-home"    (assoc (yt-browse-2 (str yt "/")) :ok true)
         "yt-subs"    (assoc (yt-browse-2 (str yt "/feed/subscriptions")) :ok true)
         "yt-history" (assoc (yt-browse-2 (str yt "/feed/history")) :ok true)
+        "yt-later"   (assoc (yt-browse-2 (str yt "/playlist?list=WL")) :ok true)
         ;; the TV's right-hand list, read without leaving the video
         "yt-upnext"  (let [t (yt-target)
                            rows (when (and t (str/includes? (:url t) "/watch")) (js t yt-upnext-js))
@@ -2631,7 +2632,7 @@ showNow();
 
 (def list-kinds
   {"browse" "results" "shows" "results" "movies" "results" "genre" "results" "search" "results"
-   "yt-home" "results" "yt-subs" "results" "yt-history" "results" "yt-search" "results" "yt-upnext" "results"
+   "yt-home" "results" "yt-subs" "results" "yt-history" "results" "yt-search" "results" "yt-upnext" "results" "yt-later" "results"
    "page-videos" "videos" "page-links" "links" "tabs" "tabs"})
 
 (defn handler-11
