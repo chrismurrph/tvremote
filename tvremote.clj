@@ -1920,7 +1920,10 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         "yt-home"    (assoc (yt-browse-2 (str yt "/")) :ok true)
         "yt-subs"    (assoc (yt-browse-2 (str yt "/feed/subscriptions")) :ok true)
         "yt-history" (assoc (yt-browse-2 (str yt "/feed/history")) :ok true)
-        "yt-later"   (assoc (yt-browse-2 (str yt "/playlist?list=WL")) :ok true)
+        ;; newest first: YouTube adds each save at the bottom (2026-10-25)
+        "yt-later"   (-> (yt-browse-2 (str yt "/playlist?list=WL"))
+                         (update :rows (fn [rs] (mapv #(update % :items (comp vec reverse)) rs)))
+                         (assoc :ok true))
         ;; the TV's right-hand list, read without leaving the video
         "yt-upnext"  (let [t (yt-target)
                            rows (when (and t (str/includes? (:url t) "/watch")) (js t yt-upnext-js))
