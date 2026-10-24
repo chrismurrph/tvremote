@@ -2156,6 +2156,44 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
           (Thread/sleep 250)
           (recur))))))
 
+(def watch-until "press-watch! runs until this time, ms." (atom 0))
+
+(defn press-watch!
+  "For 3 minutes after a press, log each change in YouTube's player state,
+   the HDMI sound output's state and the screen's power, with the time: to
+   catch the TV's blue no-signal screen ~20s after a first play after a power
+   cut (2026-10-24; not the idle blank, keep-awake was on). One watcher at a
+   time; a new press extends it. Log lines start `watch:`."
+  []
+  (let [running? (> @watch-until (System/currentTimeMillis))]
+    (reset! watch-until (+ (System/currentTimeMillis) (* 3 60 1000)))
+    (when-not running?
+      (future
+        (loop [last nil]
+          (let [yt   (try (some-> (when (= "yt" @service) (yt-target))
+                                  (yt-do "return ok?p.getPlayerState():'no player'"))
+                          (catch Exception _ "?"))
+                sink (try (some->> (:out (p/shell {:out :string :err :string :continue true
+                                                   :extra-env {"XDG_RUNTIME_DIR" runtime-dir}}
+                                                  "pactl" "list" "short" "sinks"))
+                                   str/split-lines
+                                   (some #(when (str/includes? % "hdmi")
+                                            (let [f (str/split % #"\t")] (str (first f) " " (last f))))))
+                          (catch Exception _ "?"))
+                scr  (try (some->> (:out (p/shell {:out :string :err :string :continue true
+                                                   :extra-env {"DBUS_SESSION_BUS_ADDRESS" (str "unix:path=" runtime-dir "/bus")}}
+                                                  "gdbus" "call" "--session" "--dest" "org.gnome.Mutter.DisplayConfig"
+                                                  "--object-path" "/org/gnome/Mutter/DisplayConfig" "--method"
+                                                  "org.freedesktop.DBus.Properties.Get" "org.gnome.Mutter.DisplayConfig" "PowerSaveMode"))
+                                   (re-find #"\d"))
+                          (catch Exception _ "?"))
+                now  {:yt yt :hdmi (or sink "none") :screen-power scr}]
+            (when (not= now last)
+              (println "watch:" (pr-str now)))
+            (when (< (System/currentTimeMillis) @watch-until)
+              (Thread/sleep 500)
+              (recur now))))))))
+
 (defn handler-7
   "handler-6, plus volume-floor! after each press that starts or loads
    something to watch (a few seconds on, once the player is there)."
@@ -2169,7 +2207,8 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         _   (when starts? (volume-watch! (:u (query req))))
         res (handler-6 req)]
     (when starts?
-      (volume-watch! (:u (query req))))
+      (volume-watch! (:u (query req)))
+      (press-watch!))
     (when (= "/act/volume" (:uri req))
       (future (Thread/sleep 300)
               (try (remember-volume! (:u (query req))) (catch Exception e (println "remember-volume:" (ex-message e))))))
