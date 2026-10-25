@@ -485,9 +485,10 @@
                        (when @k (first (filter #(str/includes? (:url %) (str "v=" @k)) ys)))
                        (first ys))]
           (reset! yt-id (:id pick))
-          (doseq [x ys :when (not= (:id x) (:id pick))]
-            (println "youtube: closing a second YouTube tab" (pr-str (:url x)))
-            (http/get (str "http://127.0.0.1:" cdp-port "/json/close/" (:id x)) {:throw false}))
+          ;; Closing the others was taken out on 2026-10-26: it closed the tab a
+          ;; play had just loaded, so the play and the presses after it failed.
+          (when (next ys)
+            (println "youtube:" (count ys) "YouTube tabs, using" (pr-str (:url pick))))
           pick)))))
 
 (defn rv-target
@@ -1850,7 +1851,9 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                              "sleep" "infinity"))
           (println "keep-awake: on"))
       (and (not on?) alive)
-      (do (p/destroy-tree (:proc pr)) (reset! awake-proc nil) (println "keep-awake: off")))))
+      ;; destroy-tree takes the process record: given (:proc pr) it threw a
+      ;; message-less NullPointerException every 3s and never let go (fixed 2026-10-26)
+      (do (reset! awake-proc nil) (p/destroy-tree pr) (println "keep-awake: off")))))
 
 (defn act [action q]
   (wake-screen!)
