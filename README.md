@@ -5,6 +5,8 @@ runs on a spare computer plugged into the TV, and there's nothing to install on
 the phone: it opens a web page served by that computer, and the page controls a
 Chrome window on the TV. No casting, no app store.
 
+The story behind it: [Workflow Ergonomics with AI](https://pangglow.com/files/blog/run-my-desktop.html?from=github-tvremote).
+
 - **Netflix and YouTube**: browse, search, play, pause, skip, volume, full screen.
 - **Reading**: send any web page to the TV, scroll it, change the text size,
   follow its links (with breadcrumbs back), play the videos in it.
