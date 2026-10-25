@@ -474,7 +474,11 @@
    leftover tab and Chris's 57-minute video stayed saved at 1s."
   []
   (when (chrome-up?)
-    (let [ys (filter main-yt? (targets))]
+    (let [ys (filter main-yt? (targets))
+          ;; missing? look again first: a tab loading a new video can drop out
+          ;; of Chrome's list for a moment, and the 4-a-second volume and watch
+          ;; checks caught that and opened new tabs (2026-10-26)
+          ys (if (seq ys) ys (do (Thread/sleep 2000) (filter main-yt? (targets))))]
       (if (empty? ys)
         (do (http/put (str "http://127.0.0.1:" cdp-port "/json/new?"
                            (java.net.URLEncoder/encode (str yt "/") "UTF-8")) {:throw false})
