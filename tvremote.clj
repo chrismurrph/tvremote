@@ -457,17 +457,38 @@
   [t]
   (and (on-site? "youtube.com" t) (not= (:id t) @rv-id)))
 
+(def yt-id "The main YouTube tab's id, once chosen." (atom nil))
+
+(defn main-yt-of
+  "The main YouTube tab among targets ts: the chosen one (yt-target), else the first."
+  [ts]
+  (let [ys (filter main-yt? ts)]
+    (or (first (filter #(= @yt-id (:id %)) ys)) (first ys))))
+
 (defn yt-target
-  "The main YouTube tab, opened (in the background) if there isn't one."
+  "The main YouTube tab, opened (in the background) if there isn't one.
+   There is meant to be one. When there are more (a leftover tab from
+   Chrome's restore, 2026-10-25), the one in use is kept: the last chosen,
+   else the one showing what a phone opened, else the first. The others are
+   closed: the first in Chrome's list changes, so the place-saving read a
+   leftover tab and Chris's 57-minute video stayed saved at 1s."
   []
-  (let [find #(first (filter main-yt? (targets)))]
-    (cond
-      (not (chrome-up?)) nil
-      (find) (find)
-      :else (do (http/put (str "http://127.0.0.1:" cdp-port "/json/new?"
-                               (java.net.URLEncoder/encode (str yt "/") "UTF-8")) {:throw false})
-                (Thread/sleep 1500)
-                (find)))))
+  (when (chrome-up?)
+    (let [ys (filter main-yt? (targets))]
+      (if (empty? ys)
+        (do (http/put (str "http://127.0.0.1:" cdp-port "/json/new?"
+                           (java.net.URLEncoder/encode (str yt "/") "UTF-8")) {:throw false})
+            (Thread/sleep 1500)
+            (let [t (first (filter main-yt? (targets)))] (reset! yt-id (:id t)) t))
+        (let [k    (delay (get-in (load-state) [:opened "yt" :key]))
+              pick (or (first (filter #(= @yt-id (:id %)) ys))
+                       (when @k (first (filter #(str/includes? (:url %) (str "v=" @k)) ys)))
+                       (first ys))]
+          (reset! yt-id (:id pick))
+          (doseq [x ys :when (not= (:id x) (:id pick))]
+            (println "youtube: closing a second YouTube tab" (pr-str (:url x)))
+            (http/get (str "http://127.0.0.1:" cdp-port "/json/close/" (:id x)) {:throw false}))
+          pick)))))
 
 (defn rv-target
   "The reading-video tab, or nil when there isn't one."
@@ -608,7 +629,7 @@
    the first time), leaving the main YouTube tab and its memory alone."
   [id]
   (nf-pause)
-  (when-let [m (first (filter main-yt? (targets)))] (yt-pause m))
+  (when-let [m (main-yt-of (targets))] (yt-pause m))
   (reset! service "rv")
   (let [t (or (rv-target)
               (let [r (http/put (str "http://127.0.0.1:" cdp-port "/json/new?"
@@ -855,7 +876,7 @@
       (= "rv" svc) (if-let [t (first (filter #(= @rv-id (:id %)) ts))]
                      (assoc (yt-do t yt-status-js) :chrome true :service "rv")
                      {:chrome true :service "rv" :away true})
-      (= "yt" svc) (if-let [t (first (filter main-yt? ts))]
+      (= "yt" svc) (if-let [t (main-yt-of ts)]
                      (assoc (yt-do t yt-status-js) :chrome true :service "yt")
                      {:chrome true :service "yt" :away true})
       :else (if-let [t (tab "netflix.com")]
@@ -957,7 +978,7 @@
             (let [m {:url u :title title}]
               (save-watched! :nf m)
               (swap! last-saved assoc :nf m))))))
-    (when-let [y (first (filter main-yt? ts))]
+    (when-let [y (main-yt-of ts)]
       (when (str/includes? (:url y) "/watch")
         (let [s   (yt-do y yt-status-js)
               id  (second (re-find #"[?&]v=([\w-]{11})" (or (:url s) "")))
@@ -1101,7 +1122,7 @@
               (add-history! user :nf (assoc m :key (or show (some-> title (str/split #" · ") first) u)
                                               :episode (:episode s)))
               (swap! last-saved-2 assoc [user :nf] m))))))
-    (when-let [y (first (filter main-yt? ts))]
+    (when-let [y (main-yt-of ts)]
       (when (str/includes? (:url y) "/watch")
         (let [s    (yt-do y yt-status-js)
               id   (second (re-find #"[?&]v=([\w-]{11})" (or (:url s) "")))
