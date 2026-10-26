@@ -3016,13 +3016,11 @@ showNow();
   (let [awake? (or (some-> (or @last-press started-ms) (> (- (System/currentTimeMillis) (* 15 60 1000))))
                    (boolean (some-> (current-player) player-playing?)))]
     (keep-awake! awake?)
-    (cond
-      awake? (reset! blanked? false)
-      (not @blanked?)
-      (do (reset! blanked? true)
-          ;; the display's power off, not the screensaver (see wake-screen!)
-          (display-power! 3)
-          (println "screen: blanked (15 min, nothing playing, no press)")))))
+    ;; No blanking at all since 2026-10-27: powering the display off lost the
+    ;; HDMI sound output, and powering it on didn't bring it back (sound came
+    ;; from the laptop's speakers until a screensaver cycle). The TV turns
+    ;; itself off; the laptop's picture just stays on.
+    nil))
 
 (defn -main []
   (server/run-server handler-15 {:port port :ip "0.0.0.0" :thread 8})
