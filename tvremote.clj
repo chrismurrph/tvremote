@@ -2984,9 +2984,31 @@ showNow();
 ;; (gnome-session-inhibit, held while it runs) while a video plays or within
 ;; 15 min of a press; otherwise it blanks as before.
 
+;; The remote blanks the screen itself (2026-10-26). The inhibitor alone didn't
+;; stop GNOME re-blanking 16s after a press woke the screen: with nobody at the
+;; laptop's keyboard GNOME counts it idle for hours, and only real input resets
+;; that (Mutter's ResetIdletime is testing-only). So GNOME's own blank is off
+;; (org.gnome.desktop.session idle-delay 0, set on the TV) and this blanks the
+;; screen after 15 min with nothing playing and no press; a press wakes it.
+
+(def started-ms (System/currentTimeMillis))
+(def blanked? "The remote blanked the screen and nothing has woken it since." (atom false))
+
 (defn awake-tick! []
-  (keep-awake! (or (some-> @last-press (> (- (System/currentTimeMillis) (* 15 60 1000))))
-                   (boolean (some-> (current-player) player-playing?)))))
+  (let [awake? (or (some-> (or @last-press started-ms) (> (- (System/currentTimeMillis) (* 15 60 1000))))
+                   (boolean (some-> (current-player) player-playing?)))]
+    (keep-awake! awake?)
+    (cond
+      awake? (reset! blanked? false)
+      (not @blanked?)
+      (do (reset! blanked? true)
+          (try (p/shell {:out :discard :err :discard
+                         :extra-env {"DBUS_SESSION_BUS_ADDRESS" (str "unix:path=" runtime-dir "/bus")}}
+                        "gdbus" "call" "--session" "--dest" "org.gnome.ScreenSaver"
+                        "--object-path" "/org/gnome/ScreenSaver"
+                        "--method" "org.gnome.ScreenSaver.SetActive" "true")
+               (catch Exception _ nil))
+          (println "screen: blanked (15 min, nothing playing, no press)")))))
 
 (defn -main []
   (server/run-server handler-15 {:port port :ip "0.0.0.0" :thread 8})
