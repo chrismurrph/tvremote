@@ -1432,17 +1432,34 @@
                  :let [[k v] (str/split kv #"=" 2)] :when (seq k)]
              [(keyword k) (java.net.URLDecoder/decode (or v "") "UTF-8")])))
 
-(defn wake-screen!
-  "Un-blank the TV. Screen lock is off on this machine (2026-10-04), so this
-   is all it takes; a blanked screen also stops Chrome drawing, and Netflix
-   only loads rows while it draws."
-  []
-  (try (p/shell {:out :discard :err :discard
-                 :extra-env {"DBUS_SESSION_BUS_ADDRESS" (str "unix:path=" runtime-dir "/bus")}}
-                "gdbus" "call" "--session" "--dest" "org.gnome.ScreenSaver"
-                "--object-path" "/org/gnome/ScreenSaver"
-                "--method" "org.gnome.ScreenSaver.SetActive" "false")
+(def display-power-js
+  "gdbus args to read/set Mutter's display power (0 on, 3 off)."
+  ["gdbus" "call" "--session" "--dest" "org.gnome.Mutter.DisplayConfig"
+   "--object-path" "/org/gnome/Mutter/DisplayConfig" "--method"])
+
+(defn gnome-call [& args]
+  (try (:out (apply p/shell {:out :string :err :string :continue true
+                             :extra-env {"DBUS_SESSION_BUS_ADDRESS" (str "unix:path=" runtime-dir "/bus")}}
+                    args))
        (catch Exception _ nil)))
+
+(defn display-power! [mode]
+  (apply gnome-call (concat display-power-js ["org.freedesktop.DBus.Properties.Set"
+                                              "org.gnome.Mutter.DisplayConfig" "PowerSaveMode"
+                                              (str "<" mode ">")])))
+
+(defn wake-screen!
+  "Un-blank the TV: the display's power on (Mutter PowerSaveMode 0). Not the
+   screensaver's SetActive false, as before 2026-10-26: after that GNOME
+   powered the display off again ~20s later, which was the blue screen soon
+   after a first press. The screensaver is turned off only if it is on."
+  []
+  (when (some-> (gnome-call "gdbus" "call" "--session" "--dest" "org.gnome.ScreenSaver"
+                            "--object-path" "/org/gnome/ScreenSaver" "--method" "org.gnome.ScreenSaver.GetActive")
+                (str/includes? "true"))
+    (gnome-call "gdbus" "call" "--session" "--dest" "org.gnome.ScreenSaver"
+                "--object-path" "/org/gnome/ScreenSaver" "--method" "org.gnome.ScreenSaver.SetActive" "false"))
+  (display-power! 0))
 
 (defn yt-act
   "The transport buttons on YouTube tab t."
@@ -2609,7 +2626,8 @@ showNow();
    ph- presses; /status says \"ph\" while Photos is the current service."
   [req]
   (let [uri (:uri req) q (query req)
-        ph  (fn [r] (reset! last-press (System/currentTimeMillis)) (reply r))]
+        ;; these presses skip act, so wake the screen here too (2026-10-26)
+        ph  (fn [r] (reset! last-press (System/currentTimeMillis)) (wake-screen!) (reply r))]
     (case uri
       "/photos/tv"   {:status 200 :headers {"Content-Type" "text/html; charset=utf-8"} :body photos-tv-html}
       "/photos/now"  (reply (ph-now))
@@ -3002,12 +3020,8 @@ showNow();
       awake? (reset! blanked? false)
       (not @blanked?)
       (do (reset! blanked? true)
-          (try (p/shell {:out :discard :err :discard
-                         :extra-env {"DBUS_SESSION_BUS_ADDRESS" (str "unix:path=" runtime-dir "/bus")}}
-                        "gdbus" "call" "--session" "--dest" "org.gnome.ScreenSaver"
-                        "--object-path" "/org/gnome/ScreenSaver"
-                        "--method" "org.gnome.ScreenSaver.SetActive" "true")
-               (catch Exception _ nil))
+          ;; the display's power off, not the screensaver (see wake-screen!)
+          (display-power! 3)
           (println "screen: blanked (15 min, nothing playing, no press)")))))
 
 (defn -main []
