@@ -490,6 +490,10 @@ function setLocal(s){var el=document.getElementById('local'),t='';s_svc=s.servic
   var dg=s['nf-dialog'];if(dg){var dk='dlg|'+dg.text+'|'+dg.buttons.join('|');if(dk===localKey)return;localKey=dk;
     el.innerHTML='💬 Netflix on the TV asks: '+esc(dg.text)+'<br>'+dg.buttons.map(function(b,i){
       return '<button style="margin:6px 6px 0 0" onclick="nfDialog(this,'+i+')">'+esc(b)+'</button>';}).join('');return;}
+  // YouTube's end screen waiting for a click (2026-10-27): its title, Play now, Cancel
+  var up=s['yt-upnext'];if(up){var uk='up|'+up;if(uk===localKey)return;localKey=uk;
+    el.innerHTML='⏭ YouTube up next: '+esc(up)+'<div class="keeprow"><button onclick="ytEnd(this,\'play\')">Play now</button>'+
+      '<button onclick="ytEnd(this,\'cancel\')">Cancel</button></div>';return;}
   var k=t&&s.keepable,key=t+'|'+(k?1:0)+'|'+who;if(key===localKey)return;localKey=key;
   // Next and Not interested (2026-10-21) beside it, for YouTube only.
   // the buttons on a row of their own under the line (2026-10-21)
@@ -510,6 +514,9 @@ function shutDown(b){if(!b.classList.contains('sure')){b.classList.add('sure');b
     setTimeout(function(){b.classList.remove('sure');b.textContent='Shut it down';b.style.background='';b.style.borderColor='';},4000);return;}
   flash(b,'busy');call('shutdown').then(function(r){flash(b,r.ok?'done':'fail',900);
     msg(r.ok?'Shutting down — press its power button to turn it back on':r.error);})
+  .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
+function ytEnd(b,how){flash(b,'busy');call('yt-endscreen?b='+how).then(function(r){
+    flash(b,r.ok?'done':'fail',900);if(!r.ok)msg(r.error);setTimeout(poll,400);})
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
 function ytSkip(b,what){flash(b,'busy');call(what).then(function(r){flash(b,r.ok?'done':'fail',900);
     msg(!r.ok?r.error:what==='yt-next'?'Next':('Not interested'+(r.channel?' — '+r.channel+(r.blocked?' won\'t be recommended':' disliked'):'')));

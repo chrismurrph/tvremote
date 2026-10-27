@@ -1659,6 +1659,23 @@
       (if ok {:ok true} {:ok false :error "That button has gone"}))
     {:ok false :error "Netflix isn't asking anything now"}))
 
+(def yt-endscreen-js
+  "The title YouTube's end screen offers (Up next, Cancel / Play now), or null.
+   It usually counts down and plays; on 2026-10-27 it sat waiting for a click."
+  "(()=>{const o=document.querySelector('.ytp-autonav-endscreen-countdown-overlay');
+   if(!o||getComputedStyle(o).display==='none')return null;
+   const b=document.querySelector('.ytp-autonav-endscreen-upnext-play-button');
+   if(!b||!b.offsetParent)return null;
+   return (document.querySelector('.ytp-autonav-endscreen-upnext-title')||{}).innerText||'Up next'})()")
+
+(defn yt-endscreen!
+  "Press the end screen's Play now (b \"play\") or Cancel."
+  [b]
+  (let [sel (if (= b "play") ".ytp-autonav-endscreen-upnext-play-button" ".ytp-autonav-endscreen-upnext-cancel-button")]
+    (if-let [t (yt-target)]
+      {:ok (true? (js t (str "(()=>{const b=document.querySelector('" sel "');if(!b)return false;b.click();return true})()")))}
+      {:ok false :error "No YouTube tab"})))
+
 (defn local-status
   "For /status: :touched-ago (ms since the keyboard or mouse was used, when
    that was after the last phone press); :by-itself when YouTube or Netflix
@@ -1675,6 +1692,10 @@
       (and t (or (nil? @last-press) (> t @last-press))) (assoc :touched-ago (- now t))
       (and (= "yt" (:service st)) id k (not= id k)) (assoc :by-itself true)
       (and (= "yt" (:service st)) id (not= id k))   (assoc :keepable true)
+      ;; YouTube's end screen waiting for a click (2026-10-27)
+      (and (= "yt" (:service st)) (not (:playing st)))
+      (as-> m (if-let [u (try (some-> (yt-target) (js yt-endscreen-js)) (catch Exception _ nil))]
+                (assoc m :yt-upnext u) m))
       (and (= "nf" (:service st)) (:show st)
            (not= (:show st) (get-in @opened ["nf" :key]))) (assoc :keepable true)
       (and (= "nf" (:service st)) (:show st) (get-in @opened ["nf" :key])
@@ -1921,6 +1942,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                        {:ok false :error "Keep this is turned off for you"}
                        (keep! (:svc q) (user-of q)))
         "yt-next"    (yt-next!)
+        "yt-endscreen" (yt-endscreen! (:b q))
         "yt-nope"    (if (barred? no-nope-people (user-of q))
                        {:ok false :error "Not interested is turned off for you"}
                        (yt-nope!))
