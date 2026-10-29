@@ -1273,6 +1273,24 @@
   (hold-paused! t yt-pause-js yt-paused-js)
   (start-over-if-done! t))
 
+(defn play-yt!
+  "Play YouTube watch record w in tab t from its place (from the start when
+   short or finished), full-screen: a Recent tap (2026-10-29). Not load-yt!'s
+   held pause: YouTube kept starting it, the hold kept re-pausing, and 7 of 55
+   taps took over 15s (worst 26s); a play takes ~5s."
+  [t w]
+  (let [from (when-not (or (yt-done? w) (some-> (:dur-s w) (< 600))) (:time-s w))]
+    (navigate t (str yt "/watch?v=" (:id w) (when from (str "&t=" from "s"))))
+    (when (wait-for t "(()=>{const p=document.getElementById('movie_player');
+                         return location.pathname==='/watch'&&p&&p.getPlayerState&&p.getPlayerState()===1})()" 15000)
+      (loop [n 0]
+        (when (and (< n 3) (not (js t "!!document.fullscreenElement")))
+          (Thread/sleep 1200)
+          (press t "f")
+          (wait-for t "!!document.fullscreenElement" 2500)
+          (recur (inc n)))))
+    true))
+
 (defn load-page!
   "Show url in the reading tab (opened if there isn't one) at scroll, a
    fraction of the way down, with its text size put back."
@@ -1332,8 +1350,9 @@
                  {:ok true}))))))
 
 (defn resume!
-  "Load entry i of user's recent svc (\"nf\", \"yt\" or \"page\"): a show or
-   video paused at its place, a page at its scroll position."
+  "Load entry i of user's recent svc (\"nf\", \"yt\" or \"page\"): a show
+   paused at its place, a YouTube video playing from its place, a page at its
+   scroll position."
   [svc user i k]
   ;; by key when the phone sends one (2026-10-29): an index into a list that
   ;; changed since the phone drew it (a song finished, a ✕) loaded the wrong song
@@ -1347,7 +1366,8 @@
           "nf"   (let [t (tv-target)]
                    (reset! service "nf") (cdp t "Page.bringToFront") (load-nf! t w))
           "yt"   (let [t (yt-target)]
-                   (reset! service "yt") (cdp t "Page.bringToFront") (load-yt! t w))
+                   ;; plays at once since 2026-10-29 (was loaded paused, slow)
+                   (reset! service "yt") (cdp t "Page.bringToFront") (play-yt! t w))
           "page" (do (when (:zoom w)
                        ;; the page's own size becomes the reader's base again
                        (update-state! #(assoc-in % [:zoom user] (:zoom w))))

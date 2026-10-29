@@ -558,7 +558,7 @@ function forget(b){if(!b.classList.contains('sure')){b.classList.add('sure');b.t
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
 function resume(b,i){flash(b,'busy');msg('Loading on the TV…');switching=true;
   call('resume?svc='+recentSvc+'&i='+i+'&k='+encodeURIComponent(b.dataset.k||'')).then(function(r){switching=false;flash(b,r.ok?'done':'fail',900);
-    msg(r.ok?('Loaded '+r.loaded+(recentSvc==='page'?'':' — paused, ready to play')):r.error);setTimeout(poll,400);})
+    msg(r.ok?((recentSvc==='yt'?'Playing ':'Loaded ')+r.loaded+(recentSvc==='nf'?' — paused, ready to play':'')):r.error);setTimeout(poll,400);})
   .catch(function(e){switching=false;flash(b,'fail',900);msg('No answer: '+e);});}
 // Netflix's "Who's watching?" on the TV by itself: show its names here too.
 // Drawn once per change, and cleared when it goes, unless titles replaced it.
