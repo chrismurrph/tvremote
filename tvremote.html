@@ -543,11 +543,12 @@ function renderRecent(s,v){var r=s.recent,box=document.getElementById('recent');
   if(recentOff>=r.length)recentOff=Math.max(0,Math.floor((r.length-1)/6)*6);
   var page=r.slice(recentOff,recentOff+6);
   box.innerHTML='<h2>Recent</h2>'+
-    (recentOff>0?'<button class="recentnav" onclick="recentPage(-6)">▲ Newer</button>':'')+
+    // both always there, greyed at the ends, so the list doesn't jump
+    '<button class="recentnav" onclick="recentPage(-6)"'+(recentOff>0?'':' disabled')+'>▲ Newer</button>'+
     page.map(function(e,j){var i=recentOff+j;
     return '<div class="recent"><button class="link" onclick="resume(this,'+i+')">'+esc(e.title)+(e.sub?'<small>'+esc(e.sub)+'</small>':'')+'</button>'+
       (e.key?'<button class="x" data-k="'+esc(e.key)+'" onclick="forget(this)">✕</button>':'')+'</div>'}).join('')+
-    (recentOff+6<r.length?'<button class="recentnav" onclick="recentPage(6)">▼ Older</button>':'');}
+    '<button class="recentnav" onclick="recentPage(6)"'+(recentOff+6<r.length?'':' disabled')+'>▼ Older</button>';}
 function recentPage(d){recentOff=Math.max(0,recentOff+d);recentKey='';
   renderRecent({recent:recentAll},recentSvc);}
 function forget(b){if(!b.classList.contains('sure')){b.classList.add('sure');b.textContent='Remove?';
