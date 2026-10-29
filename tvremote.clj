@@ -1228,7 +1228,7 @@
   "(()=>{const v=document.querySelector('video'),p=document.getElementById('movie_player');
      if(!v||!(v.duration>0)||(p&&p.classList.contains('ad-showing')))return null;
      const d=v.duration,t=v.currentTime;
-     if(d<600||d-t<30||t>0.95*d){v.currentTime=0;return true}return false})()")
+     if(d<600||d-t<30||t>0.95*d){if(p&&p.seekTo)p.seekTo(0,true);else v.currentTime=0;return true}return false})()")
 
 (defn start-over-if-done!
   "In tab t, send a short or nearly finished video back to 0:00 (waits up to
@@ -1264,7 +1264,12 @@
   "Load YouTube watch record w in tab t, held paused at its second — or at the
    start, for a short or nearly finished video (start-over-if-done!)."
   [t w]
-  (cdp t "Page.navigate" {:url (str yt "/watch?v=" (:id w) "&t=" (:time-s w 0) "s")})
+  ;; short or finished: load from the start (2026-10-29). Loaded at its end
+  ;; (&t=170s of 170) YouTube took it as ended, start-over-if-done! moved the
+  ;; video back too late, and play then moved on to the next video.
+  (cdp t "Page.navigate" {:url (str yt "/watch?v=" (:id w)
+                                    (when-not (or (yt-done? w) (some-> (:dur-s w) (< 600)))
+                                      (str "&t=" (:time-s w 0) "s")))})
   (hold-paused! t yt-pause-js yt-paused-js)
   (start-over-if-done! t))
 
