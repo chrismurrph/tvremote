@@ -2223,12 +2223,23 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
       "rv" (some-> (rv-target) (yt-do yt))
       nil)))
 
+(defn yt-save-volume!
+  "Write v (0-1) as YouTube's own saved volume in the main YouTube tab
+   (localStorage/sessionStorage yt-player-volume), so the next video YouTube
+   loads starts there by itself (2026-10-29)."
+  [v]
+  (when-let [t (yt-target)]
+    (js t (str "(()=>{const now=Date.now(),d=JSON.stringify({volume:" (Math/round (* 100 (double v))) ",muted:false});
+      localStorage.setItem('yt-player-volume',JSON.stringify({data:d,expiration:now+30*24*3600*1000,creation:now}));
+      sessionStorage.setItem('yt-player-volume',JSON.stringify({data:d,creation:now}));return true})()"))))
+
 (defn remember-volume!
   "After a Vol press: the level it left is now this person's own."
   [u]
   (when-let [v (when u (current-volume))]
     (swap! person-volume assoc u v)
-    (update-state! #(assoc-in % [:volume u] v))))
+    (update-state! #(assoc-in % [:volume u] v))
+    (when (#{"yt" "rv"} @service) (try (yt-save-volume! v) (catch Exception _ nil)))))
 
 (defn volume-floor-2!
   "volume-floor!, per person (2026-10-17). Whatever starts plays at the
@@ -2251,12 +2262,13 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
    reads the person's volume afresh, so a Vol press meanwhile isn't undone."
   [u]
   (future
-    (let [end (+ (System/currentTimeMillis) 10000)]
-      (loop []
-        (try (volume-floor-2! u) (catch Exception _ nil))
-        (when (< (System/currentTimeMillis) end)
-          (Thread/sleep 250)
-          (recur))))))
+    ;; YouTube's own saved volume first, so a new video starts right by itself;
+    ;; then a few checks as a safety net, not 40 (2026-10-29)
+    (when-let [v (get @person-volume u)]
+      (when (#{"yt" "rv"} @service) (try (yt-save-volume! v) (catch Exception _ nil))))
+    (doseq [ms [0 1500 4000 8000]]
+      (Thread/sleep ms)
+      (try (volume-floor-2! u) (catch Exception _ nil)))))
 
 (def watch-until "press-watch! runs until this time, ms." (atom 0))
 
@@ -2671,6 +2683,15 @@ showNow();
     (cond
       (nil? svc)  {:ok true}
       (= "ph" svc) (ph-open!)
+      ;; since 2026-10-29 nothing is loaded: what's on stops, the TV goes to
+      ;; their service, and the phone shows their Recent to tap (it plays).
+      ;; Loading their last one paused fought YouTube's autoplay (~9s, up to 21s).
+      (#{"nf" "yt"} svc)
+      (do (try (record-watching-2!) (catch Exception _ nil))
+          (pause-all)
+          (reset! service svc)
+          (some-> (if (= "yt" svc) (yt-target) (tv-target)) (cdp "Page.bringToFront"))
+          {:ok true})
       :else        (switch-service-2! svc user))))
 
 (defn handler-9
