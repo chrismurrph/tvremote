@@ -927,10 +927,12 @@
     (= k :nf) (remove nf-done?)))
 
 (defn recent
-  "The first 10 of user's history for the service svc shows under."
+  "user's Recent for the service svc shows under: all of it (up to the
+   history's 100) since 2026-10-29; the phone shows 6 at a time with Newer /
+   Older buttons."
   [user svc]
   (when-let [k (and user ({"nf" :nf "yt" :yt "page" :page "rv" :page "rl" :page} svc))]
-    (vec (for [w (take 10 (shown-history user k))]
+    (vec (for [w (shown-history user k)]
            {:title (or (:title w) (:url w) (:id w))
             :key   (:key w)
             :sub   (case k

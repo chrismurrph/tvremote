@@ -82,6 +82,7 @@ button.red{background:var(--red);border-color:var(--red)}
 #whorow{display:flex;justify-content:space-between;align-items:center;margin:-4px 0 6px}
 #local{color:#e0a030;font-size:13px;margin-top:4px}
 #local:empty{display:none}
+.recentnav{display:block;width:100%;margin:6px 0;padding:10px 6px}
 .keeprow{display:flex;gap:8px;margin-top:8px}
 .keeprow button{flex:1;padding:10px 6px;font-size:15px;border-radius:12px}
 #wake{color:var(--soft);font-size:13px}
@@ -531,12 +532,24 @@ function keepThis(b){flash(b,'busy');call('keep?svc='+(s_svc||'yt')).then(functi
 // it off this person's list: a first tap turns it into "Remove?", a second
 // within 4s removes it (no dialog; a child's stray tap does nothing).
 var recentKey='',recentSvc=null;
+// Recent shows 6 at a time, newest first; ▲ Newer at the top and ▼ Older at
+// the bottom move through the whole list (2026-10-29). The place goes back to
+// the newest on a new service or person.
+var recentOff=0,recentLast=null,recentAll=null;
 function renderRecent(s,v){var r=s.recent,box=document.getElementById('recent');
-  var key=JSON.stringify([v,r||[]]);if(key===recentKey)return;recentKey=key;recentSvc=v;
+  var who_v=v+'|'+who;if(who_v!==recentLast){recentLast=who_v;recentOff=0;}
+  var key=JSON.stringify([v,recentOff,r||[]]);if(key===recentKey)return;recentKey=key;recentSvc=v;recentAll=r;
   if(!r||!r.length){box.innerHTML='';return;}
-  box.innerHTML='<h2>Recent</h2>'+r.map(function(e,i){
+  if(recentOff>=r.length)recentOff=Math.max(0,Math.floor((r.length-1)/6)*6);
+  var page=r.slice(recentOff,recentOff+6);
+  box.innerHTML='<h2>Recent</h2>'+
+    (recentOff>0?'<button class="recentnav" onclick="recentPage(-6)">▲ Newer</button>':'')+
+    page.map(function(e,j){var i=recentOff+j;
     return '<div class="recent"><button class="link" onclick="resume(this,'+i+')">'+esc(e.title)+(e.sub?'<small>'+esc(e.sub)+'</small>':'')+'</button>'+
-      (e.key?'<button class="x" data-k="'+esc(e.key)+'" onclick="forget(this)">✕</button>':'')+'</div>'}).join('');}
+      (e.key?'<button class="x" data-k="'+esc(e.key)+'" onclick="forget(this)">✕</button>':'')+'</div>'}).join('')+
+    (recentOff+6<r.length?'<button class="recentnav" onclick="recentPage(6)">▼ Older</button>':'');}
+function recentPage(d){recentOff=Math.max(0,recentOff+d);recentKey='';
+  renderRecent({recent:recentAll},recentSvc);}
 function forget(b){if(!b.classList.contains('sure')){b.classList.add('sure');b.textContent='Remove?';
     setTimeout(function(){b.classList.remove('sure');b.textContent='✕';},4000);return;}
   flash(b,'busy');call('forget?svc='+recentSvc+'&key='+encodeURIComponent(b.dataset.k)).then(function(r){
