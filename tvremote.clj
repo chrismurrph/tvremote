@@ -122,6 +122,10 @@
     (cond
       (not (chrome-up?)) nil ; Start asks for a tab before Chrome exists
       (find) (find)
+      ;; missing? look again first, as yt-target does: a loading tab can drop
+      ;; out of Chrome's list for a moment, and opening a second Netflix tab
+      ;; got Netflix's M7020 "more than one browser or tab" (2026-10-29)
+      (do (Thread/sleep 2000) (find)) (find)
       :else (do (http/put (str "http://127.0.0.1:" cdp-port "/json/new?"
                                (java.net.URLEncoder/encode url "UTF-8")) {:throw false})
                 (Thread/sleep 1500)
