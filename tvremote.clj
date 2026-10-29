@@ -1329,8 +1329,11 @@
 (defn resume!
   "Load entry i of user's recent svc (\"nf\", \"yt\" or \"page\"): a show or
    video paused at its place, a page at its scroll position."
-  [svc user i]
-  (if-let [w (and user (nth (vec (shown-history user (keyword svc))) i nil))]
+  [svc user i k]
+  ;; by key when the phone sends one (2026-10-29): an index into a list that
+  ;; changed since the phone drew it (a song finished, a ✕) loaded the wrong song
+  (if-let [w (and user (or (when (seq k) (first (filter #(= k (:key %)) (get-in (load-state) [:history user (keyword svc)]))))
+                           (nth (vec (shown-history user (keyword svc))) i nil)))]
     (do (try (record-watching-2!) (catch Exception _ nil))
         (pause-all)
         (set-owner! svc user)
@@ -1938,7 +1941,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                          (let [ok (open-page (:url q))]
                            (when ok (some-> (page-target) zoom-when-loaded!))
                            {:ok ok}))
-        "resume"     (resume! (:svc q) (user-of q) (parse-long (:i q)))
+        "resume"     (resume! (:svc q) (user-of q) (parse-long (:i q)) (:k q))
         "forget"     (forget! (:svc q) (user-of q) (:key q))
         "keep"       (if (barred? no-keep-people (user-of q))
                        {:ok false :error "Keep this is turned off for you"}

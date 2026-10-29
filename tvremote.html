@@ -546,7 +546,7 @@ function renderRecent(s,v){var r=s.recent,box=document.getElementById('recent');
     // both always there, greyed at the ends, so the list doesn't jump
     '<button class="recentnav" onclick="recentPage(-6)"'+(recentOff>0?'':' disabled')+'>▲ Newer</button>'+
     page.map(function(e,j){var i=recentOff+j;
-    return '<div class="recent"><button class="link" onclick="resume(this,'+i+')">'+esc(e.title)+(e.sub?'<small>'+esc(e.sub)+'</small>':'')+'</button>'+
+    return '<div class="recent"><button class="link" data-k="'+esc(e.key||'')+'" onclick="resume(this,'+i+')">'+esc(e.title)+(e.sub?'<small>'+esc(e.sub)+'</small>':'')+'</button>'+
       (e.key?'<button class="x" data-k="'+esc(e.key)+'" onclick="forget(this)">✕</button>':'')+'</div>'}).join('')+
     '<button class="recentnav" onclick="recentPage(6)"'+(recentOff+6<r.length?'':' disabled')+'>▼ Older</button>';}
 function recentPage(d){recentOff=Math.max(0,recentOff+d);recentKey='';
@@ -557,7 +557,7 @@ function forget(b){if(!b.classList.contains('sure')){b.classList.add('sure');b.t
     if(r.ok){recentKey='';poll();}else{flash(b,'fail',900);msg(r.error);}})
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
 function resume(b,i){flash(b,'busy');msg('Loading on the TV…');switching=true;
-  call('resume?svc='+recentSvc+'&i='+i).then(function(r){switching=false;flash(b,r.ok?'done':'fail',900);
+  call('resume?svc='+recentSvc+'&i='+i+'&k='+encodeURIComponent(b.dataset.k||'')).then(function(r){switching=false;flash(b,r.ok?'done':'fail',900);
     msg(r.ok?('Loaded '+r.loaded+(recentSvc==='page'?'':' — paused, ready to play')):r.error);setTimeout(poll,400);})
   .catch(function(e){switching=false;flash(b,'fail',900);msg('No answer: '+e);});}
 // Netflix's "Who's watching?" on the TV by itself: show its names here too.
