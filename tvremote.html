@@ -82,6 +82,8 @@ button.red{background:var(--red);border-color:var(--red)}
 #whorow{display:flex;justify-content:space-between;align-items:center;margin:-4px 0 6px}
 #local{color:#e0a030;font-size:13px;margin-top:4px}
 #local:empty{display:none}
+#recent .link.sure{background:var(--ok)}
+#recent .ask{font-weight:700}
 .recentnav{display:block;width:100%;margin:6px 0;padding:10px 6px}
 .keeprow{display:flex;gap:8px;margin-top:8px}
 .keeprow button{flex:1;padding:10px 6px;font-size:15px;border-radius:12px}
@@ -556,7 +558,18 @@ function forget(b){if(!b.classList.contains('sure')){b.classList.add('sure');b.t
   flash(b,'busy');call('forget?svc='+recentSvc+'&key='+encodeURIComponent(b.dataset.k)).then(function(r){
     if(r.ok){recentKey='';poll();}else{flash(b,'fail',900);msg(r.error);}})
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
-function resume(b,i){flash(b,'busy');msg('Loading on the TV…');switching=true;
+// Two taps (2026-10-30): the first marks the line ("▶ Play?"), a second within
+// 4s plays it. One tap played at once, and a touch to stop a scroll could be
+// taken as a tap. Like the ✕'s "Remove?".
+function resume(b,i){
+  if(!b.classList.contains('sure')){
+    document.querySelectorAll('#recent .link.sure').forEach(function(o){o.classList.remove('sure');var w=o.querySelector('.ask');if(w)w.remove();});
+    b.classList.add('sure');var w=document.createElement('span');w.className='ask';
+    w.textContent=({yt:'▶ Play? ',nf:'▶ Load? ',page:'Open? '})[recentSvc]||'▶ Play? ';b.insertBefore(w,b.firstChild);
+    setTimeout(function(){if(b.classList.contains('sure')){b.classList.remove('sure');var x=b.querySelector('.ask');if(x)x.remove();}},4000);return;}
+  b.classList.remove('sure');var x=b.querySelector('.ask');if(x)x.remove();
+  resume2(b,i);}
+function resume2(b,i){flash(b,'busy');msg('Loading on the TV…');switching=true;
   call('resume?svc='+recentSvc+'&i='+i+'&k='+encodeURIComponent(b.dataset.k||'')).then(function(r){switching=false;flash(b,r.ok?'done':'fail',900);
     msg(r.ok?((recentSvc==='yt'?'Playing ':'Loaded ')+r.loaded+(recentSvc==='nf'?' — paused, ready to play':'')):r.error);setTimeout(poll,400);})
   .catch(function(e){switching=false;flash(b,'fail',900);msg('No answer: '+e);});}
