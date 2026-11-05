@@ -1482,18 +1482,49 @@
                                               "org.gnome.Mutter.DisplayConfig" "PowerSaveMode"
                                               (str "<" mode ">")])))
 
+(defn hdmi-sink-id
+  "The HDMI sound output's id, or nil while there is none."
+  []
+  (try (some->> (:out (p/shell {:out :string :err :string :continue true
+                                :extra-env {"XDG_RUNTIME_DIR" runtime-dir}}
+                               "pactl" "list" "short" "sinks"))
+                str/split-lines
+                (some #(when (str/includes? % "hdmi") (first (str/split % #"\t")))))
+       (catch Exception _ nil)))
+
+(defn display-off? []
+  (some-> (apply gnome-call (concat display-power-js ["org.freedesktop.DBus.Properties.Get"
+                                                     "org.gnome.Mutter.DisplayConfig" "PowerSaveMode"]))
+          (str/includes? "<3>")))
+
+(defn screensaver! [on?]
+  (gnome-call "gdbus" "call" "--session" "--dest" "org.gnome.ScreenSaver"
+              "--object-path" "/org/gnome/ScreenSaver" "--method" "org.gnome.ScreenSaver.SetActive"
+              (str on?)))
+
 (defn wake-screen!
   "Un-blank the TV: the display's power on (Mutter PowerSaveMode 0). Not the
-   screensaver's SetActive false, as before 2026-10-26: after that GNOME
-   powered the display off again ~20s later, which was the blue screen soon
-   after a first press. The screensaver is turned off only if it is on."
+   screensaver's SetActive false alone: after that GNOME powered the display
+   off again ~20s later (the blue screen soon after a press, 2026-10-26).
+   Coming back from the remote's own blank, the HDMI sound output can stay
+   gone (sound on the laptop's speakers, 2026-10-27): then the screensaver
+   is run on and off once, which brings it back, and the power is set on
+   again, which holds (tested 2026-10-27 and 2026-11-06)."
   []
   (when (some-> (gnome-call "gdbus" "call" "--session" "--dest" "org.gnome.ScreenSaver"
                             "--object-path" "/org/gnome/ScreenSaver" "--method" "org.gnome.ScreenSaver.GetActive")
                 (str/includes? "true"))
-    (gnome-call "gdbus" "call" "--session" "--dest" "org.gnome.ScreenSaver"
-                "--object-path" "/org/gnome/ScreenSaver" "--method" "org.gnome.ScreenSaver.SetActive" "false"))
-  (display-power! 0))
+    (screensaver! false))
+  (when (display-off?)
+    (display-power! 0)
+    (when-not (some (fn [_] (Thread/sleep 500) (hdmi-sink-id)) (range 4))
+      (println "screen: woke without HDMI sound, running the screensaver once to bring it back")
+      (screensaver! true)
+      (Thread/sleep 6000)
+      (screensaver! false)
+      (Thread/sleep 3000)
+      (display-power! 0)
+      (println "screen: HDMI sound" (if (hdmi-sink-id) "back" "STILL MISSING")))))
 
 (defn yt-act
   "The transport buttons on YouTube tab t."
@@ -3017,16 +3048,6 @@ showNow();
 ;; was playing, and no phone pressed anything since, it presses play once the
 ;; sink is back (2026-10-22).
 
-(defn hdmi-sink-id
-  "The HDMI sound output's id, or nil while there is none."
-  []
-  (try (some->> (:out (p/shell {:out :string :err :string :continue true
-                                :extra-env {"XDG_RUNTIME_DIR" runtime-dir}}
-                               "pactl" "list" "short" "sinks"))
-                str/split-lines
-                (some #(when (str/includes? % "hdmi") (first (str/split % #"\t")))))
-       (catch Exception _ nil)))
-
 (defn current-player
   "The tab of the video service that's current, and how to ask/play it."
   []
@@ -3093,11 +3114,15 @@ showNow();
   (let [awake? (or (some-> (or @last-press started-ms) (> (- (System/currentTimeMillis) (* 15 60 1000))))
                    (boolean (some-> (current-player) player-playing?)))]
     (keep-awake! awake?)
-    ;; No blanking at all since 2026-10-27: powering the display off lost the
-    ;; HDMI sound output, and powering it on didn't bring it back (sound came
-    ;; from the laptop's speakers until a screensaver cycle). The TV turns
-    ;; itself off; the laptop's picture just stays on.
-    nil))
+    ;; Blanking is back since 2026-11-06: without it the signal never stopped,
+    ;; so the TV never went to its own sleep (off 2026-10-27 to 11-06, after
+    ;; the power-off blank lost the HDMI sound; wake-screen! now repairs that).
+    (cond
+      awake? (reset! blanked? false)
+      (not @blanked?)
+      (do (reset! blanked? true)
+          (display-power! 3)
+          (println "screen: blanked (15 min, nothing playing, no press)")))))
 
 (defn -main []
   (server/run-server handler-15 {:port port :ip "0.0.0.0" :thread 8})
