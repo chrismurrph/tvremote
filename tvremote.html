@@ -84,6 +84,7 @@ button.red{background:var(--red);border-color:var(--red)}
 #local:empty{display:none}
 #recent .link.sure{background:var(--ok)}
 #recent .ask{font-weight:700}
+.listdef{color:var(--soft);font-size:14px;margin:8px 0}
 .recentnav{display:block;width:100%;margin:6px 0;padding:10px 6px}
 .keeprow{display:flex;gap:8px;margin-top:8px}
 .keeprow button{flex:1;padding:10px 6px;font-size:15px;border-radius:12px}
@@ -428,9 +429,20 @@ function switchTo(b,s){flash(b,'busy');switching=true;msg('Switching the TV…')
     if(r.ok){setSvc(s);setControls(s);msg(r.loaded?('Loaded '+r.loaded+' — paused, ready to play'):'');
       if(r.fresh){load(b,s==='yt'?'yt-home':'browse');return;}}else{msg(r.error);if(s==='page'){wantOpen=true;document.getElementById('openrow').style.display='';}}setTimeout(poll,400);})
   .catch(function(e){switching=false;flash(b,'fail',900);msg('No answer: '+e);});}
-function load(b,path){flash(b,'busy');msg('Reading '+(svc==='yt'?'YouTube':'Netflix')+' on the TV… (a long page takes a while)');
+// What each YouTube list is (2026-11-07): shown at once while the TV reads
+// it, then kept above the list.
+var listDefs={
+  'yt-home':'Home: YouTube\'s own picks for this house, from what everyone has watched. They change each time.',
+  'yt-subs':'Subscriptions: the newest videos from the channels the house follows.',
+  'yt-upnext':'Up next: YouTube\'s suggestions for the video playing now (the list on the right of the TV).',
+  'yt-later':'Watch later: videos saved to watch later, the 10 most recently saved first.',
+  'yt-search':'Search: what YouTube finds for your words.'};
+var listNote=' Videos you finished or hid are left out.';
+function load(b,path){flash(b,'busy');var ld=listDefs[path.split('?')[0]];
+  msg(ld?ld+listNote:'Reading '+(svc==='yt'?'YouTube':'Netflix')+' on the TV… (a long page takes a while)');
   if(!/^genre/.test(path))document.getElementById('genres').innerHTML='';
-  call(path).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok){msg(r.error);return;}render(r);})
+  call(path).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok){msg(r.error);return;}render(r);
+    if(ld)document.getElementById('results').insertAdjacentHTML('afterbegin','<div class="listdef">'+esc(ld+listNote)+'</div>');})
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
 function pageVideos(b){flash(b,'busy');
   call('page-videos').then(function(r){flash(b,r.ok?'done':'fail',900);
