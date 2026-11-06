@@ -355,7 +355,7 @@ function poll(){
     renderCrumbs(s);
     renderRecent(s,v);
     renderProfiles(s);
-    syncList(s);
+    syncList(s);dropGone(s);
     if(s.zoom)document.getElementById('zoomval').textContent=zoomText(s);
     if(s.service==='rl'){now.textContent='🔗 Level '+(level(s)||'?')+(s.link&&s.link.title?' — '+s.link.title:'');sub.textContent='Tap 📖 or a number to go back';return;}
     if(s.service==='page'){now.textContent='📖 Reading'+(s.page&&s.page.title?' — '+s.page.title:'');sub.textContent='';return;}
@@ -381,7 +381,7 @@ function render(r){
       return '<button onclick="pickGenre(this,\''+g.id+'\')">'+esc(g.name)+'</button>'}).join('')+'</div>';
   if(r.kind!=='titles'||!r.rows||!r.rows.length){msg(r.note||('Nothing found'+(r.url?' ('+r.url+')':'')));return;}
   if(svc==='yt'){out.innerHTML='<div class="grid">'+r.rows[0].items.map(function(it){
-      return '<button class="tile" onclick="play(this,\''+it.id+'\',this.dataset.t)" data-t="'+esc(it.title)+'">'+
+      return '<button class="tile" data-id="'+esc(it.id)+'" onclick="play(this,\''+it.id+'\',this.dataset.t)" data-t="'+esc(it.title)+'">'+
         '<img loading="lazy" src="'+esc(it.img)+'" alt=""><span>'+esc(it.title)+'</span>'+
         (it.channel?'<small>'+esc(it.channel)+'</small>':'')+'</button>'}).join('')+'</div>';return;}
   out.innerHTML=r.rows.map(function(row){
@@ -622,6 +622,10 @@ function renderTabs(tabs){
 var listSeq=-1;
 // A new person on the TV (2026-10-24): the last one's lists go.
 function clearLists(){['results','genres','pgvideos'].forEach(function(id){var e=document.getElementById(id);if(e)e.innerHTML='';});msg('');}
+// A video that becomes done or hidden leaves the YouTube list already on
+// screen too (2026-11-07): /status carries the person's done ids as :gone.
+function dropGone(s){var g=s.gone;if(!g||!g.length)return;
+  document.querySelectorAll('#results .tile[data-id]').forEach(function(t){if(g.indexOf(t.dataset.id)>=0)t.remove();});}
 function syncList(s){var n=s['list-seq'];if(n==null||n===listSeq)return;listSeq=n;
   fetch('/list').then(function(r){return r.json()}).then(function(l){if(l.seq!==listSeq)return;
     if(l.kind==='clear'){clearLists();return;}if(!l.r)return;

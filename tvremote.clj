@@ -970,6 +970,8 @@
               (status))
       (seq (:levels trail)) (assoc :trail trail)
       user                  (assoc :recent (recent user svc))
+      ;; the person's done YouTube videos, so the phone drops them from a list on screen
+      user                  (assoc :gone (vec (yt-gone-ids user)))
       (#{"page" "rl"} svc)  (merge (let [b (zoom-of user) l (and (= "rl" svc) (rl-target))]
                                      (if l
                                        (let [a (get-in (load-state) [:zoom-adj user (host-of (:url l))] 0.0)]
