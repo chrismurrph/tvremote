@@ -913,6 +913,21 @@
 
 (defn music? [w] (= "Music" (:category w)))
 
+(defn yt-gone-ids
+  "The YouTube videos user is done with: ✕'d, or finished (not music, which
+   is for hearing again). The one rule for every YouTube list on the phone
+   (Home, Subscriptions, Search, Up next, Watch later), since 2026-11-07;
+   half-watched ones stay, to carry on from their place."
+  [user]
+  (into #{} (comp (filter #(or (:hidden %) (and (yt-done? %) (not (music? %))))) (map :id))
+        (get-in (load-state) [:history user :yt])))
+
+(defn without-gone
+  "A browse reply's rows without the videos in the set gone."
+  [reply gone]
+  (cond-> reply (:rows reply)
+    (update :rows (fn [rs] (mapv (fn [r] (update r :items (fn [is] (vec (remove (comp gone :id) is))))) rs)))))
+
 (defn nf-done?
   "A Netflix history entry with nothing more to watch: a film or a show's last
    episode, within 30s or 5% of its end. Saved before 2026-10-22: no."
@@ -2049,8 +2064,8 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                        (when ok (some-> (rl-target) zoom-when-loaded!))
                        {:ok ok})
         "page-back"  (if-let [p (page-target)] {:ok (page-back p)} {:ok false :error "No page open for reading"})
-        "yt-home"    (assoc (yt-browse-2 (str yt "/")) :ok true)
-        "yt-subs"    (assoc (yt-browse-2 (str yt "/feed/subscriptions")) :ok true)
+        "yt-home"    (assoc (without-gone (yt-browse-2 (str yt "/")) (yt-gone-ids (user-of q))) :ok true)
+        "yt-subs"    (assoc (without-gone (yt-browse-2 (str yt "/feed/subscriptions")) (yt-gone-ids (user-of q))) :ok true)
         "yt-history" (assoc (yt-browse-2 (str yt "/feed/history")) :ok true)
         ;; newest first: YouTube adds each save at the bottom (2026-10-25)
         "yt-later"   (-> (yt-browse-2 (str yt "/playlist?list=WL"))
@@ -2058,21 +2073,21 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                          ;; leaving out what this person finished or ✕'d (YouTube never
                          ;; takes a watched video off Watch later, 2026-11-07)
                          (update :rows (fn [rs]
-                                         (let [gone (into #{} (comp (filter #(or (:hidden %) (yt-done? %))) (map :id))
-                                                          (get-in (load-state) [:history (user-of q) :yt]))]
+                                         (let [gone (yt-gone-ids (user-of q))]
                                            (mapv #(update % :items (fn [is] (vec (take 10 (remove (comp gone :id) (reverse is)))))) rs))))
                          (assoc :ok true))
         ;; the TV's right-hand list, read without leaving the video
         "yt-upnext"  (let [t (yt-target)
                            rows (when (and t (str/includes? (:url t) "/watch")) (js t yt-upnext-js))
                            now-id (some->> t :url (re-find #"[?&]v=([\w-]{11})") second)
-                           ;; and what this person already watched (their Recent history)
-                           seen (into #{now-id} (comp (remove music?) (map :id))
-                                      (get-in (load-state) [:history (user-of q) :yt]))
+                           ;; and what this person is done with (the one rule, 2026-11-07;
+                           ;; it used to leave out half-watched videos too)
+                           seen (conj (yt-gone-ids (user-of q)) now-id)
                            rows (mapv (fn [r] (update r :items (fn [is] (vec (remove #(seen (:id %)) is))))) rows)]
                        (if (seq rows) {:ok true :kind "titles" :rows rows}
                            {:ok false :error "Nothing playing on YouTube, so no Up next list"}))
-        "yt-search"  (assoc (yt-browse-2 (str yt "/results?search_query=" (java.net.URLEncoder/encode (:q q) "UTF-8"))) :ok true)
+        "yt-search"  (assoc (without-gone (yt-browse-2 (str yt "/results?search_query=" (java.net.URLEncoder/encode (:q q) "UTF-8")))
+                                          (yt-gone-ids (user-of q))) :ok true)
         "yt-play"    (do (try (record-watching-2!) (catch Exception _ nil))
                          (set-owner! "yt" (user-of q))
                          (set-opened! "yt" (user-of q) (re-find #"[\w-]{11}" (:id q)))
