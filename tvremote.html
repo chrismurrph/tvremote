@@ -309,7 +309,9 @@ function call(path){
   setBusy(1);working(path);
   return fetch('/act/'+path+(path.indexOf('?')<0?'?':'&')+'u='+encodeURIComponent(who||''))
   .then(function(r){return r.json()})
-  .then(function(r){setBusy(-1);workDone();if(r&&r['list-seq']!=null)listSeq=r['list-seq'];return r},function(e){setBusy(-1);workDone();throw e});}
+  // every press is followed by a status read (2026-11-07): one place, so no
+  // press can forget to (8 kinds did, the list buttons among them)
+  .then(function(r){setBusy(-1);workDone();if(r&&r['list-seq']!=null)listSeq=r['list-seq'];setTimeout(poll,300);return r},function(e){setBusy(-1);workDone();throw e});}
 function act(b,path){flash(b,'busy');
   call(path).then(function(r){flash(b,r.ok?'done':'fail',900);if(!r.ok&&r.error)msg(r.error);setTimeout(poll,400);})
   .catch(function(e){flash(b,'fail',900);setOffline(true);msg('No answer from the media machine: '+e);});}

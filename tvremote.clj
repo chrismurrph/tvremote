@@ -1116,6 +1116,12 @@
   "Whether the log has been told Netflix's player data is missing (once a run)."
   (atom false))
 
+;; The place is saved when it moved this many seconds since the last save.
+;; 15 for the tick; a press binds it to 1, so a place reached just before
+;; stop is saved at once and the phone's next status already counts it
+;; (2026-11-07: a video stopped 22s from its end still showed as unwatched).
+(def ^:dynamic *save-step* 15)
+
 (defn record-watching-2!
   "record-watching!, saved for each tab's owner, and with Netflix's second too
    (so two people in the same show each get their own place back)."
@@ -1141,7 +1147,7 @@
               sec   (some-> (:time s) (/ 1000) long)]
           (when (and user
                      (or (not= u (:url prev)) (and title (not= title (:title prev)))
-                         (and sec (>= (abs (- sec (:time-s prev 0))) 15))))
+                         (and sec (>= (abs (- sec (:time-s prev 0))) *save-step*))))
             (let [m (cond-> {:url u :title title :time-s sec}
                       ;; length and last-or-film, so Recent can leave out a finished show
                       (some-> (:duration s) pos?) (assoc :dur-s (long (/ (:duration s) 1000))
@@ -1158,7 +1164,7 @@
               sec  (some-> (:time s) (/ 1000) long)
               prev (get @last-saved-2 [user :yt])]
           ;; no title: an unavailable or not-yet-loaded video, never saved over a good entry
-          (when (and user id sec (not (str/blank? (:title s))) (or (not= id (:id prev)) (>= (abs (- sec (:time-s prev 0))) 15)))
+          (when (and user id sec (not (str/blank? (:title s))) (or (not= id (:id prev)) (>= (abs (- sec (:time-s prev 0))) *save-step*)))
             (let [m (cond-> {:id id :title (:title s) :channel (:picked s) :time-s sec}
                       ;; its length, so Recent can leave out what was watched to the end
                       (some-> (:duration s) pos?) (assoc :dur-s (long (/ (:duration s) 1000)))
@@ -2369,6 +2375,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
   "handler-6, plus volume-floor! after each press that starts or loads
    something to watch (a few seconds on, once the player is there)."
   [req]
+  (binding [*save-step* 1]
   (let [starts? (#{"/act/play" "/act/yt-play" "/act/resume" "/act/switch" "/act/start"
                    "/act/profile" "/act/page-video" "/act/yt-next" "/act/yt-nope"
                    ;; a plain play: the last person's level was kept until a Vol
@@ -2383,7 +2390,10 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
     (when (= "/act/volume" (:uri req))
       (future (Thread/sleep 300)
               (try (remember-volume! (:u (query req))) (catch Exception e (println "remember-volume:" (ex-message e))))))
-    res))
+    (when (#{"/act/toggle" "/act/seek" "/act/skip" "/act/yt-next" "/act/yt-nope" "/act/yt-endscreen"} (:uri req))
+      ;; a press is an event: save the place now, not at the tick's next 15s
+      (try (record-watching-2!) (catch Exception e (println "record-watching:" (ex-message e)))))
+    res)))
 
 (defn handler-8
   "handler-7, plus remembering when a phone last pressed something, so a later
@@ -2769,7 +2779,7 @@ showNow();
                                 (update-state! #(assoc-in % [:last-svc (user-of q)] "ph")))
                               r))
       ;; and their own volume, at once (2026-10-24)
-      "/act/who"        (ph (let [r (who! (user-of q))] (volume-watch! (user-of q)) r))
+      "/act/who"        (ph (let [r (binding [*save-step* 1] (who! (user-of q)))] (volume-watch! (user-of q)) r))
       "/act/ph-step"    (ph (ph-step! (or (parse-long (str (:n q))) 1) (= "1" (:month q))))
       "/act/ph-archive" (ph (ph-archive!))
       "/act/ph-undo"    (ph (ph-undo!))
