@@ -35,6 +35,8 @@ button.done{background:var(--ok)}
 button.fail{background:var(--bad)}
 button.red{background:var(--red);border-color:var(--red)}
 #searchbox{display:flex;gap:8px}
+#q::-webkit-search-cancel-button{display:none}
+#qclear{padding:8px 12px;visibility:hidden}
 #q{flex:1;font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:12px}
 #msg{color:var(--soft);font-size:14px;margin-top:8px;min-height:1.2em}
 .row h3{font-size:15px;margin:18px 0 6px}
@@ -207,7 +209,8 @@ body.offline button,body.offline input{opacity:.4;pointer-events:none}
 
 <div id="find">
 <div id="searchbox">
-  <input id="q" type="search" placeholder="Search Netflix" enterkeyhint="search" oninput="saveQ()" onkeydown="if(event.key==='Enter')search(document.getElementById('gobtn'))">
+  <input id="q" type="search" placeholder="Search Netflix" enterkeyhint="search" oninput="saveQ();showClear()" onkeydown="if(event.key==='Enter')search(document.getElementById('gobtn'))">
+  <button id="qclear" onclick="clearQ()" aria-label="Clear">✕</button>
   <button id="gobtn" onclick="search(this)">Search</button>
 </div>
 <div class="pad" id="nfbtns">
@@ -407,7 +410,10 @@ function useQFor(w){if(!w||w===qWho)return;
   // the old one-per-phone text goes to whoever is first seen here
   if(!allQ[w]&&!Object.keys(allQ).length){try{allQ[w]=JSON.parse(localStorage.getItem('tvremote-q'))||{};}catch(e){}}
   qWho=w;lastQ=allQ[w]=allQ[w]||{};
-  var qb=document.getElementById('q');if(qb&&svc)qb.value=lastQ[svc]||'';}
+  var qb=document.getElementById('q');if(qb&&svc){qb.value=lastQ[svc]||'';showClear();}}
+// ✕ beside the search box empties it (2026-11-07); shown only with text in it
+function showClear(){var q=document.getElementById('q');document.getElementById('qclear').style.visibility=q.value?'visible':'hidden';}
+function clearQ(){var q=document.getElementById('q');q.value='';saveQ();showClear();q.focus();}
 function saveQ(){if(!svc||!qWho)return;lastQ[svc]=document.getElementById('q').value;
   try{localStorage.setItem('tvremote-q2',JSON.stringify(allQ));}catch(e){}}
 function setSvc(s){var changed=(s!==svc),prevSvc=svc;svc=s;
@@ -422,7 +428,7 @@ function setSvc(s){var changed=(s!==svc),prevSvc=svc;svc=s;
   document.getElementById('q').placeholder=s==='yt'?'Search YouTube':'Search Netflix';
   // Each service keeps its own search text (2026-10-19: a Netflix search stayed
   // in the box after switching to YouTube).
-  if(changed){var qb=document.getElementById('q');if(prevSvc)lastQ[prevSvc]=qb.value;qb.value=lastQ[s]||'';}
+  if(changed){var qb=document.getElementById('q');if(prevSvc)lastQ[prevSvc]=qb.value;qb.value=lastQ[s]||'';showClear();}
   if(changed){document.getElementById('results').innerHTML='';document.getElementById('genres').innerHTML='';}}
 function switchTo(b,s){flash(b,'busy');switching=true;msg('Switching the TV…');
   call('switch?to='+s).then(function(r){switching=false;flash(b,r.ok?'done':'fail',900);
