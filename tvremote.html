@@ -433,10 +433,10 @@ function switchTo(b,s){flash(b,'busy');switching=true;msg('Switching the TV…')
 // it, then kept above the list.
 var listDefs={
   'yt-home':'Home: YouTube\'s own picks for this house, from what everyone has watched. They change each time.',
-  'yt-subs':'Subscriptions: the newest videos from the channels the house follows.',
+  'yt-subs':'Subscriptions: Newest videos from the channels the house follows.',
   'yt-upnext':'Up next: YouTube\'s suggestions for the video playing now (the list on the right of the TV).',
-  'yt-later':'Watch later: videos saved to watch later, the 10 most recently saved first.',
-  'yt-search':'Search: what YouTube finds for your words.'};
+  'yt-later':'Watch later: Videos saved to watch later, the 10 most recently saved first.',
+  'yt-search':'Search: What YouTube finds for your words.'};
 var listNote=' Videos you finished or hid are left out.';
 function load(b,path){flash(b,'busy');var ld=listDefs[path.split('?')[0]];
   msg(ld?ld+listNote:'Reading '+(svc==='yt'?'YouTube':'Netflix')+' on the TV… (a long page takes a while)');
