@@ -36,7 +36,7 @@ button.fail{background:var(--bad)}
 button.red{background:var(--red);border-color:var(--red)}
 #searchbox{display:flex;gap:8px}
 #q::-webkit-search-cancel-button{display:none}
-#qclear{padding:8px 10px;visibility:hidden;flex:none}
+#gobtn{flex:none;min-width:5.5em}
 #q{flex:1;min-width:0;font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:12px}
 #msg{color:var(--soft);font-size:14px;margin-top:8px;min-height:1.2em}
 .row h3{font-size:15px;margin:18px 0 6px}
@@ -210,8 +210,7 @@ body.offline button,body.offline input{opacity:.4;pointer-events:none}
 <div id="find">
 <div id="searchbox">
   <input id="q" type="search" placeholder="Search Netflix" enterkeyhint="search" oninput="saveQ();showClear()" onkeydown="if(event.key==='Enter')search(document.getElementById('gobtn'))">
-  <button id="qclear" onclick="clearQ()" aria-label="Clear">✕</button>
-  <button id="gobtn" onclick="search(this)">Search</button>
+  <button id="gobtn" onclick="goPress(this)">Search</button>
 </div>
 <div class="pad" id="nfbtns">
   <button onclick="load(this,'browse')">🏠 Home</button>
@@ -414,8 +413,16 @@ function useQFor(w){if(!w||w===qWho)return;
   qWho=w;lastQ=allQ[w]=allQ[w]||{};
   var qb=document.getElementById('q');if(qb&&svc){qb.value=lastQ[svc]||'';showClear();}}
 // ✕ beside the search box empties it (2026-11-07); shown only with text in it
-function showClear(){var q=document.getElementById('q');document.getElementById('qclear').style.visibility=q.value?'visible':'hidden';}
-function clearQ(){var q=document.getElementById('q');q.value='';saveQ();showClear();q.focus();}
+// The Search button becomes ✕ once its words have been searched (2026-11-08):
+// searching the same words again is rarely needed (Enter still does it). Any
+// change to the words brings Search back. ✕ clears the words and the results.
+var searched=null,searchedSvc=null;
+function showClear(){var q=document.getElementById('q'),b=document.getElementById('gobtn');
+  b.textContent=(q.value&&q.value===searched&&svc===searchedSvc)?'✕':'Search';}
+function clearQ(){var q=document.getElementById('q');q.value='';saveQ();searched=null;
+  document.getElementById('results').innerHTML='';document.getElementById('genres').innerHTML='';msg('');
+  showClear();q.focus();}
+function goPress(b){if(b.textContent==='✕')clearQ();else search(b);}
 function saveQ(){if(!svc||!qWho)return;lastQ[svc]=document.getElementById('q').value;
   try{localStorage.setItem('tvremote-q2',JSON.stringify(allQ));}catch(e){}}
 function setSvc(s){var changed=(s!==svc),prevSvc=svc;svc=s;
@@ -653,6 +660,7 @@ function zoom(b,how){flash(b,'busy');
 function pickGenre(b,id){document.querySelectorAll('.chips button').forEach(function(c){c.classList.remove('sel')});
   b.classList.add('sel');load(b,'genre?id='+id);}
 function search(b){var q=document.getElementById('q').value.trim();if(!q)return;
+  searched=document.getElementById('q').value;searchedSvc=svc;showClear();
   document.getElementById('q').blur();load(b,(svc==='yt'?'yt-search':'search')+'?q='+encodeURIComponent(q));}
 function play(b,id,title){flash(b,'busy');
   call((svc==='yt'?'yt-play':'play')+'?id='+id+'&t='+encodeURIComponent(title)).then(function(r){flash(b,r.ok?'done':'fail',1500);msg(r.ok?'Starting '+title+' on the TV':r.error);setTimeout(poll,2500);})
