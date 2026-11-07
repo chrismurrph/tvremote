@@ -2903,7 +2903,11 @@ showNow();
    all evening. Chrome redraws the cursor only on a mouse move, and the lock
    stops real ones. Netflix shows its controls for a moment, then hides them."
   []
-  (let [on (locked?)]
+  ;; hidden while locked, and since 2026-11-08 also whenever the TV's own
+  ;; mouse or keyboard hasn't been used for 2 min: unlocked, the pointer sat
+  ;; over a whole Netflix evening
+  (let [on (or (locked?)
+               (not (some-> @last-touch (> (- (System/currentTimeMillis) (* 2 60 1000))))))]
     (doseq [t (filter #(and (= "page" (:type %))
                             (or (on-site? "netflix.com" %) (on-site? "youtube.com" %)))
                       (targets))]
