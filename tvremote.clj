@@ -3051,6 +3051,38 @@ showNow();
                  (get-in @ph-files [(:rel n) :rotate]) (assoc :rotate (get-in @ph-files [(:rel n) :rotate])))))
       :else (handler-14 req))))
 
+;; ---------------------------------------------------------------- queue
+;; "Put it up on the tab" on the Oryx also sends the doc here, through
+;; `bigscreen --quiet` (2026-11-08). Nothing changes on the TV: the page is
+;; only kept in state.edn :pending-page, and the next switch to Reading opens it.
+
+(defn handler-16
+  "handler-15, plus /act/queue?url=: keep the page as :pending-page. A switch
+   to Reading opens a pending page."
+  [req]
+  (let [uri (:uri req)
+        q   (query req)]
+    (cond
+      (= "/act/queue" uri)
+      (do (update-state! #(assoc % :pending-page (:url q)))
+          (println (str "- @" (:remote-addr req) " queue url=" (:url q)))
+          (flush)
+          (reply {:ok true :queued true}))
+
+      (and (= "/act/switch" uri) (= "page" (:to q)) (:pending-page (load-state)))
+      (let [url (:pending-page (load-state))
+            r   (handler-15 req)
+            u   (user-of q)]
+        (update-state! #(dissoc % :pending-page))
+        (set-owner! "page" u)
+        (set-opened! "page" u nil)
+        (load-page! url 0)
+        (println (str (or u "-") " @" (:remote-addr req) " opened the pending page " url))
+        (flush)
+        r)
+
+      :else (handler-15 req))))
+
 ;; ---------------------------------------------------------------- overview
 ;; GNOME opens in the Activities overview after login, so after a power cut
 ;; (the machine starts by itself on AC) the TV showed a row of app icons until
@@ -3157,7 +3189,7 @@ showNow();
           (println "screen: blanked (15 min, nothing playing, no press)")))))
 
 (defn -main []
-  (server/run-server handler-15 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-16 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))
