@@ -2253,17 +2253,6 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
             (catch Exception e (println "resume last:" (ex-message e)))))))
     res))
 
-(defn volume-floor!
-  "Whatever is now playing starts no quieter than mid-range: below 30% it is
-   set to 50%. Netflix and YouTube each remember their own volume, and
-   YouTube's had drifted to 5% (2026-10-12), so a video seemed not to play."
-  []
-  (case @service
-    "nf" (some-> (tv-target) (player-do "if(p&&p.getVolume()<0.3){p.setVolume(0.5);return true}return false"))
-    "yt" (some-> (yt-target) (yt-do "if(ok&&p.getVolume()<30){p.unMute();p.setVolume(50);return true}return false"))
-    "rv" (some-> (rv-target) (yt-do "if(ok&&p.getVolume()<30){p.unMute();p.setVolume(50);return true}return false"))
-    nil))
-
 (def person-volume
   "Each person's own volume, 0-1: where their last Vol press left it
    (state.edn :volume {name v})."
@@ -2304,34 +2293,71 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
     (update-state! #(assoc-in % [:volume u] v))
     (when (#{"yt" "rv"} @service) (try (yt-save-volume! v) (catch Exception _ nil)))))
 
-(defn volume-floor-2!
-  "volume-floor!, per person (2026-10-17). Whatever starts plays at the
-   person's own volume, when they have one. Then, for anyone, nearly silent
-   (below 5%) becomes 20%: the old floor (below 30% -> 50%) undid Rica's
-   quiet 15% on every song."
+;; Volume per item (2026-11-08): a Vol press also saves the level for the video
+;; or Netflix show playing now, for whoever opened it, in state.edn
+;; :item-volume {user {"yt" {video-id v} "nf" {show v}}}. When that item plays
+;; again, its own level wins over the person's (:volume). Chris lowered the fish
+;; tank video every time.
+
+(defn item-of
+  "[svc key] of what user opened and is now playing (YouTube or Netflix), or nil."
+  [u]
+  (let [svc @service
+        {ou :user k :key} (get @opened svc)]
+    (when (and u k (#{"yt" "nf"} svc) (= u ou)
+               ;; not a video YouTube autoplayed after it
+               (or (= "nf" svc)
+                   (= k (second (re-find #"[?&]v=([\w-]{11})" (or (some-> (yt-target) :url) ""))))))
+      [svc k])))
+
+(defn item-volume
+  "User's saved level for what is playing now, or nil."
+  [u]
+  (when-let [[svc k] (item-of u)]
+    (get-in (load-state) [:item-volume u svc k])))
+
+(defn remember-volume-2!
+  "remember-volume!, plus the level saved for the item playing now."
+  [u]
+  (remember-volume! u)
+  (when-let [[svc k] (item-of u)]
+    (when-let [v (current-volume)]
+      (update-state! #(assoc-in % [:item-volume u svc k] v)))))
+
+(defn volume-floor!
+  "Whatever plays now goes to user's level for this item when there is one
+   (2026-11-08), else to the person's own level (2026-10-17), else stays. Then,
+   for anyone, nearly silent (below 5%) becomes 20%. The first floor (below 30%
+   -> 50%, 2026-10-12: YouTube's own volume had drifted to 5%, so a video
+   seemed not to play) undid Rica's quiet 15% on every song."
   [u]
   (when-let [cur (current-volume)]
-    (let [want (or (get @person-volume u) cur)
+    (let [want (or (item-volume u) (get @person-volume u) cur)
           want (if (< want 0.05) 0.2 want)]
       (when (> (abs (- cur want)) 0.02)
         (set-volume! want)
         (println "volume:" (or u "-") cur "->" want)))))
 
 (defn volume-watch!
-  "volume-floor-2! every 250ms for 10s, from the moment of a press: a newly
-   loaded YouTube player starts at YouTube's own saved 5%, and the old single
-   check 4s after the press left a video too quiet for those seconds
-   (2026-10-23). Each check changes nothing once the volume is right, and
-   reads the person's volume afresh, so a Vol press meanwhile isn't undone."
+  "volume-floor! a few times from the moment of a press: a newly loaded YouTube
+   player starts at YouTube's own saved 5%, and a single check 4s after the
+   press left a video too quiet for those seconds (2026-10-23). Each check
+   changes nothing once the volume is right, and reads the levels afresh, so a
+   Vol press meanwhile isn't undone. YouTube's saved volume is written from the
+   person's level at once, then from the item's after 1.5s, when a Recent tap
+   has made the new video the opened one (2026-11-08)."
   [u]
   (future
     ;; YouTube's own saved volume first, so a new video starts right by itself;
     ;; then a few checks as a safety net, not 40 (2026-10-29)
-    (when-let [v (get @person-volume u)]
-      (when (#{"yt" "rv"} @service) (try (yt-save-volume! v) (catch Exception _ nil))))
-    (doseq [ms [0 1500 4000 8000]]
-      (Thread/sleep ms)
-      (try (volume-floor-2! u) (catch Exception _ nil)))))
+    (let [save! #(when (#{"yt" "rv"} @service)
+                   (when-let [v (or (item-volume u) (get @person-volume u))]
+                     (try (yt-save-volume! v) (catch Exception _ nil))))]
+      (save!)
+      (doseq [ms [0 1500 4000 8000]]
+        (Thread/sleep ms)
+        (when (= ms 1500) (save!))
+        (try (volume-floor! u) (catch Exception _ nil))))))
 
 (def watch-until "press-watch! runs until this time, ms." (atom 0))
 
@@ -2389,7 +2415,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
       (press-watch!))
     (when (= "/act/volume" (:uri req))
       (future (Thread/sleep 300)
-              (try (remember-volume! (:u (query req))) (catch Exception e (println "remember-volume:" (ex-message e))))))
+              (try (remember-volume-2! (:u (query req))) (catch Exception e (println "remember-volume:" (ex-message e))))))
     (when (#{"/act/toggle" "/act/seek" "/act/skip" "/act/yt-next" "/act/yt-nope" "/act/yt-endscreen"} (:uri req))
       ;; a press is an event: save the place now, not at the tick's next 15s
       (try (record-watching-2!) (catch Exception e (println "record-watching:" (ex-message e)))))
