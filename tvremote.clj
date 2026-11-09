@@ -3109,6 +3109,60 @@ showNow();
 
       :else (handler-15 req))))
 
+;; ---------------------------------------------------------------- music
+;; A person's songs as a playlist (2026-11-09). When a song (YouTube category
+;; Music) a person chose from the phone ends, the next song from their own
+;; history plays, before YouTube's autoplay drifts off (into children's videos,
+;; that day). "Next" is down the list as it stood when the run started
+;; (`music-chain`): each song played moves to the top of the history, so the
+;; live order would bounce between two songs. At the bottom it starts again
+;; at the top. Anything that isn't Music ends as YouTube decides.
+
+(def music-chain "{:user u :ids [song ids, in history order at the start]}" (atom nil))
+(def music-last "The opened song as last seen: {:id :near-end? :at}." (atom nil))
+(def music-busy (atom false))
+
+(defn next-music!
+  "Play the song after ended-id in user's chain, in tab t."
+  [t user ended-id]
+  (let [hist  (get-in (load-state) [:history user :yt])
+        songs #(vec (keep (fn [w] (when (and (music? w) (not (:hidden w))) (:id w))) hist))
+        chain (let [c @music-chain]
+                (if (and c (= user (:user c)) (some #{ended-id} (:ids c))) c {:user user :ids (songs)}))
+        ids   (:ids chain)
+        i     (.indexOf ^java.util.List ids ended-id)
+        nxt   (when (and (>= i 0) (> (count ids) 1)) (nth ids (mod (inc i) (count ids))))
+        w     (when nxt (first (filter #(= nxt (:id %)) hist)))]
+    (when w
+      (reset! music-chain chain)
+      (reset! music-last nil)
+      (println "music: next for" user "-" (:title w))
+      (set-owner! "yt" user)
+      (set-opened! "yt" user nxt)
+      (play-yt! t w))))
+
+(defn music-tick! []
+  (when (and (= "yt" @service) (not @music-busy))
+    (when-let [{:keys [user] k :key} (get @opened "yt")]
+      (let [song? (some #(and (= k (:id %)) (music? %)) (get-in (load-state) [:history user :yt]))
+            t     (when song? (yt-target))
+            s     (when t (yt-do t "return ok?{id:(p.getVideoData()||{}).video_id,st:p.getPlayerState(),t:p.getCurrentTime(),d:p.getDuration()}:null"))
+            ended (cond
+                    (nil? s) false
+                    (= k (:id s)) (= 0 (:st s))
+                    ;; YouTube's autoplay already moved on from the song at its end
+                    :else (let [m @music-last]
+                            (and m (= k (:id m)) (:near-end? m)
+                                 (< (- (System/currentTimeMillis) (:at m)) 20000))))]
+        (when (and s (= k (:id s)))
+          (reset! music-last {:id k :at (System/currentTimeMillis)
+                              :near-end? (and (pos? (or (:d s) 0)) (>= (:t s) (- (:d s) 8)))}))
+        (when ended
+          (reset! music-busy true)
+          (future (try (next-music! t user k)
+                       (catch Exception e (println "music:" (ex-message e)))
+                       (finally (reset! music-busy false)))))))))
+
 ;; ---------------------------------------------------------------- overview
 ;; GNOME opens in the Activities overview after login, so after a power cut
 ;; (the machine starts by itself on AC) the TV showed a row of app icons until
@@ -3252,6 +3306,7 @@ showNow();
               (try (nf-still-watching!) (catch Exception e (println "nf-still-watching:" (ex-message e))))
               (try (hdmi-tick!) (catch Exception e (println "hdmi:" (ex-message e))))
               (try (awake-tick!) (catch Exception e (println "keep-awake:" (ex-message e))))
+              (try (music-tick!) (catch Exception e (println "music:" (ex-message e))))
               (when (zero? (mod n 5))
                 (try (record-watching-2!)
                      (catch Exception e (println "record-watching:" (ex-message e))))))
