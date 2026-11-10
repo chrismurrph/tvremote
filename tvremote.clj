@@ -913,13 +913,22 @@
 
 (defn music? [w] (= "Music" (:category w)))
 
+;; Fish videos (2026-11-10): told by their title, since YouTube files them under
+;; five different categories. Watched again and again, like songs.
+(defn fish? [w] (boolean (re-find #"(?i)fish|aquarium" (str (:title w)))))
+
+(defn loop-kind
+  "What a video is played on from (a person's songs, or fish videos), or nil."
+  [w]
+  (cond (fish? w) :fish (music? w) :music))
+
 (defn yt-gone-ids
   "The YouTube videos user is done with: ✕'d, or finished (not music, which
    is for hearing again). The one rule for every YouTube list on the phone
    (Home, Subscriptions, Search, Up next, Watch later), since 2026-11-07;
    half-watched ones stay, to carry on from their place."
   [user]
-  (into #{} (comp (filter #(or (:hidden %) (and (yt-done? %) (not (music? %))))) (map :id))
+  (into #{} (comp (filter #(or (:hidden %) (and (yt-done? %) (not (loop-kind %))))) (map :id))
         (get-in (load-state) [:history user :yt])))
 
 (defn without-gone
@@ -942,7 +951,7 @@
   [user k]
   (cond->> (remove :hidden (get-in (load-state) [:history user k]))
     ;; music is for hearing again: a favourite stays (2026-10-23)
-    (= k :yt) (remove #(and (yt-done? %) (not (music? %))))
+    (= k :yt) (remove #(and (yt-done? %) (not (loop-kind %))))
     (= k :nf) (remove nf-done?)))
 
 (defn recent
@@ -3126,7 +3135,8 @@ showNow();
   "Play the song after ended-id in user's chain, in tab t."
   [t user ended-id]
   (let [hist  (get-in (load-state) [:history user :yt])
-        songs #(vec (keep (fn [w] (when (and (music? w) (not (:hidden w))) (:id w))) hist))
+        kind  (some #(when (= ended-id (:id %)) (loop-kind %)) hist)
+        songs #(vec (keep (fn [w] (when (and kind (= kind (loop-kind w)) (not (:hidden w))) (:id w))) hist))
         chain (let [c @music-chain]
                 (if (and c (= user (:user c)) (some #{ended-id} (:ids c))) c {:user user :ids (songs)}))
         ids   (:ids chain)
@@ -3144,7 +3154,7 @@ showNow();
 (defn music-tick! []
   (when (and (= "yt" @service) (not @music-busy))
     (when-let [{:keys [user] k :key} (get @opened "yt")]
-      (let [song? (some #(and (= k (:id %)) (music? %)) (get-in (load-state) [:history user :yt]))
+      (let [song? (some #(and (= k (:id %)) (loop-kind %)) (get-in (load-state) [:history user :yt]))
             t     (when song? (yt-target))
             s     (when t (yt-do t "return ok?{id:(p.getVideoData()||{}).video_id,st:p.getPlayerState(),t:p.getCurrentTime(),d:p.getDuration()}:null"))
             ended (cond
