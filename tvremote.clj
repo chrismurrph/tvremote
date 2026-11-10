@@ -915,9 +915,12 @@
 
 ;; Fish videos (2026-11-10): told by their title, since YouTube files them under
 ;; five different categories. Watched again and again, like songs.
-;; Blippi is out (2026-11-10): "Blippi Visits an Aquarium" is Blippi, not fish.
+;; Blippi is out: "Blippi Visits an Aquarium" is Blippi, not fish. And only
+;; videos over an hour: those are the calm fish tanks; the short ones are busy
+;; (people catching fish, cartoons, compilations). Both 2026-11-10.
 (defn fish? [w] (let [t (str (:title w))]
-                  (boolean (and (re-find #"(?i)fish|aquarium" t) (not (re-find #"(?i)blippi" t))))))
+                  (boolean (and (re-find #"(?i)fish|aquarium" t) (not (re-find #"(?i)blippi" t))
+                                (some-> (:dur-s w) (> 3600))))))
 
 (defn loop-kind
   "What a video is played on from (a person's songs, or fish videos), or nil."
