@@ -3143,7 +3143,8 @@ showNow();
                 (if (and c (= user (:user c)) (some #{ended-id} (:ids c))) c {:user user :ids (songs)}))
         ids   (:ids chain)
         i     (.indexOf ^java.util.List ids ended-id)
-        nxt   (when (and (>= i 0) (> (count ids) 1)) (nth ids (mod (inc i) (count ids))))
+        ;; a loop of one plays that one again (2026-11-10)
+        nxt   (when (>= i 0) (nth ids (mod (inc i) (count ids))))
         w     (when nxt (first (filter #(= nxt (:id %)) hist)))]
     (when w
       (reset! music-chain chain)
