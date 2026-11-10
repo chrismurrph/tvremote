@@ -915,7 +915,9 @@
 
 ;; Fish videos (2026-11-10): told by their title, since YouTube files them under
 ;; five different categories. Watched again and again, like songs.
-(defn fish? [w] (boolean (re-find #"(?i)fish|aquarium" (str (:title w)))))
+;; Blippi is out (2026-11-10): "Blippi Visits an Aquarium" is Blippi, not fish.
+(defn fish? [w] (let [t (str (:title w))]
+                  (boolean (and (re-find #"(?i)fish|aquarium" t) (not (re-find #"(?i)blippi" t))))))
 
 (defn loop-kind
   "What a video is played on from (a person's songs, or fish videos), or nil."
