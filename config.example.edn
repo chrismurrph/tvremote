@@ -7,6 +7,8 @@
  ;; :photos? true gives the Photos button (with none marked, no one has it).
  ;; :keep? false takes YouTube/Netflix's Keep this away from that person, and
  ;; :not-interested? false YouTube's Not interested (unmarked, everyone has them).
+ ;; :fade-min 15 dims that person's picture to black over 15 minutes of watching
+ ;; (sound stays); :fade-reset-min 45 brings it back after 45 minutes with nothing on.
  :people []                       ; e.g. [{:name "Ann" :reading? true} "Bob"]
 
  ;; The port the phone page is served on: http://<this computer>:7700/

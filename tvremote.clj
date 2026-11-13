@@ -43,6 +43,14 @@
 ;; interested away from that person; unmarked, everyone has them.
 (def no-keep-people (vec (keep #(when (and (map? %) (false? (:keep? %))) (:name %)) (:people config))))
 (def no-nope-people (vec (keep #(when (and (map? %) (false? (:not-interested? %))) (:name %)) (:people config))))
+;; :fade-min / :fade-reset-min (2026-11-13): that person's picture dims over
+;; :fade-min minutes of watching, to black; sound carries on. A break of
+;; :fade-reset-min minutes with nothing (dimmable) playing brings it back.
+(def fade-people
+  (into {} (keep #(when (and (map? %) (:fade-min %))
+                    [(str/lower-case (str/replace (:name %) #"[^A-Za-z]" ""))
+                     {:fade-ms (* 60000 (:fade-min %)) :reset-ms (* 60000 (or (:fade-reset-min %) 45))}])
+                 (:people config))))
 (defn barred? [names user]
   (boolean (some #(= user (str/lower-case (str/replace % #"[^A-Za-z]" ""))) names)))
 
@@ -3251,6 +3259,51 @@ showNow();
       (reset! hdmi {:id id :armed armed
                     :playing (boolean (when id (some-> (current-player) player-playing?)))}))))
 
+;; ---------------------------------------------------------------- fade
+;; For a person with :fade-min (ours: Zyra, 15 min, back after 45 min). Their
+;; watching time is added up across videos (so starting a new one doesn't bring
+;; the picture back) and the picture of every Netflix and YouTube tab is dimmed
+;; to match (CSS filter on the video, so full screen too); the sound is not
+;; touched. Calm fish videos (fish?) don't count and aren't dimmed. A break of
+;; :reset-ms with nothing counting resets it. The clock is in memory only.
+
+(def fade-clock "{user {:watched ms :last ms}}" (atom {}))
+(def fade-shown "The brightness last put on the tabs." (atom 1.0))
+
+(defn fade-js [b]
+  (str "(()=>{let s=document.getElementById('tvr-fade');"
+       (if (< b 0.999)
+         (str "if(!s){s=document.createElement('style');s.id='tvr-fade';document.documentElement.appendChild(s)}"
+              "s.textContent='video{filter:brightness(" b ") !important;transition:filter 3s linear}';")
+         "if(s)s.remove();")
+       "return true})()"))
+
+(defn fade-tick! []
+  (let [now (System/currentTimeMillis)
+        u   @tv-who
+        cfg (get fade-people u)
+        b   (if-not cfg
+              1.0
+              (let [pl     (current-player)
+                    info   (when (and pl (:yt pl))
+                             (yt-do (:t pl) "return ok?{title:p.getVideoData().title,d:p.getDuration()}:null"))
+                    fish   (and info (fish? {:title (:title info) :dur-s (:d info)}))
+                    counts (and pl (not fish) (player-playing? pl))
+                    {:keys [watched last]} (get @fade-clock u {:watched 0 :last now})
+                    watched (cond
+                              counts (+ watched (min 5000 (- now (or last now))))
+                              (> (- now (or last now)) (:reset-ms cfg)) 0
+                              :else watched)]
+                (swap! fade-clock assoc u {:watched watched :last (if counts now last)})
+                (max 0.0 (- 1.0 (/ (double watched) (:fade-ms cfg))))))
+        b   (/ (Math/round (* 100 b)) 100.0)]
+    (when (or (< b 0.999) (not= b @fade-shown))
+      (doseq [t (filter #(and (= "page" (:type %)) (or (on-site? "netflix.com" %) (on-site? "youtube.com" %))) (targets))]
+        (try (js t (fade-js b)) (catch Exception _ nil))))
+    (when (not= (quot (* 10 @fade-shown) 1) (quot (* 10 b) 1))
+      (println "fade:" (or u "-") (str (Math/round (* 100 b)) "%")))
+    (reset! fade-shown b)))
+
 ;; ---------------------------------------------------------------- keep awake
 ;; The real cause of the "HDMI drops" (2026-10-22): GNOME blanks the screen
 ;; after 15 idle minutes, and phone presses aren't user input, so it blanked
@@ -3323,6 +3376,7 @@ showNow();
               (try (hdmi-tick!) (catch Exception e (println "hdmi:" (ex-message e))))
               (try (awake-tick!) (catch Exception e (println "keep-awake:" (ex-message e))))
               (try (music-tick!) (catch Exception e (println "music:" (ex-message e))))
+              (try (fade-tick!) (catch Exception e (println "fade:" (ex-message e))))
               (when (zero? (mod n 5))
                 (try (record-watching-2!)
                      (catch Exception e (println "record-watching:" (ex-message e))))))
