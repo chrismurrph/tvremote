@@ -51,6 +51,10 @@
                     [(str/lower-case (str/replace (:name %) #"[^A-Za-z]" ""))
                      {:fade-ms (* 60000 (:fade-min %)) :reset-ms (* 60000 (or (:fade-reset-min %) 45))}])
                  (:people config))))
+;; :child? true (2026-11-14): only a child's name plays children's videos.
+(def child-people
+  (set (keep #(when (and (map? %) (:child? %)) (str/lower-case (str/replace (:name %) #"[^A-Za-z]" "")))
+             (:people config))))
 (defn barred? [names user]
   (boolean (some #(= user (str/lower-case (str/replace % #"[^A-Za-z]" ""))) names)))
 
@@ -923,6 +927,20 @@
 
 ;; Fish videos (2026-11-10): told by their title, since YouTube files them under
 ;; five different categories. Watched again and again, like songs.
+;; Children's videos (2026-11-14). YouTube doesn't mark them anywhere the page
+;; shows, so: a channel in kids-channels.txt (beside this file), or a title or
+;; channel name with a children's word. A new channel with none of the words
+;; gets through until it is added to the file.
+(def kids-channels
+  (try (set (map str/lower-case (remove str/blank? (str/split-lines (slurp (str base-dir "/kids-channels.txt"))))))
+       (catch Exception _ #{})))
+(def kids-words #"(?i)nursery|kids|kid's|toddler|baby|babies|lullab|preschool|children|blippi|cocomelon|peppa|bluey|pinkfong|ms rachel|sesame")
+(def kids-block "A children's video paused under an adult's name: {:at ms :title}." (atom nil))
+
+(defn kids? [{:keys [title channel]}]
+  (boolean (or (contains? kids-channels (str/lower-case (str channel)))
+               (re-find kids-words (str title " " channel)))))
+
 ;; Blippi is out: "Blippi Visits an Aquarium" is Blippi, not fish. And only
 ;; videos over an hour: those are the calm fish tanks; the short ones are busy
 ;; (people catching fish, cartoons, compilations). Both 2026-11-10.
@@ -1802,6 +1820,8 @@
       (and t (or (nil? @last-press) (> t @last-press))) (assoc :touched-ago (- now t))
       (and (= "yt" (:service st)) id k (not= id k)) (assoc :by-itself true)
       (and (= "yt" (:service st)) id (not= id k))   (assoc :keepable true)
+      ;; a children's video paused under an adult's name, in the last 15s
+      (some-> @kids-block :at (> (- now 15000))) (assoc :kids-blocked (:title @kids-block))
       ;; YouTube's end screen waiting for a click (2026-10-27)
       (and (= "yt" (:service st)) (not (:playing st)))
       (as-> m (if-let [u (try (some-> (yt-target) (js yt-endscreen-js)) (catch Exception _ nil))]
@@ -2118,10 +2138,13 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                            {:ok false :error "Nothing playing on YouTube, so no Up next list"}))
         "yt-search"  (assoc (without-gone (yt-browse-2 (str yt "/results?search_query=" (java.net.URLEncoder/encode (:q q) "UTF-8")))
                                           (yt-gone-ids (user-of q))) :ok true)
-        "yt-play"    (do (try (record-watching-2!) (catch Exception _ nil))
+        "yt-play"    (if (and (not (child-people (user-of q))) (seq child-people)
+                              (kids? {:title (:t q)}) (not (fish? {:title (:t q) :dur-s 99999})))
+                       {:ok false :error (str "Children's videos play under " (str/join " or " (map str/capitalize child-people)) "'s name")}
+                       (do (try (record-watching-2!) (catch Exception _ nil))
                          (set-owner! "yt" (user-of q))
                          (set-opened! "yt" (user-of q) (re-find #"[\w-]{11}" (:id q)))
-                         {:ok (yt-play (re-find #"[\w-]{11}" (:id q)))})
+                         {:ok (yt-play (re-find #"[\w-]{11}" (:id q)))}))
         ;; Never alongside another Chrome: one window on the TV, and the other
         ;; one closed means it has stopped playing (Chris, 2026-10-07).
         "start"   (cond
@@ -2211,7 +2234,8 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
   [req]
   (if (= "/config" (:uri req))
     (reply {:people people-names :reading reading-people :photos photos-people
-            :no-keep no-keep-people :no-nope no-nope-people})
+            :no-keep no-keep-people :no-nope no-nope-people
+            :children (mapv str/capitalize child-people)})
     (handler-2 req)))
 
 (def home-screen-files
@@ -3259,6 +3283,23 @@ showNow();
       (reset! hdmi {:id id :armed armed
                     :playing (boolean (when id (some-> (current-player) player-playing?)))}))))
 
+;; ---------------------------------------------------------------- children
+;; A children's video playing under a name that isn't a child's (autoplay, a
+;; Recent tap, Up next) is paused at once, and the phone says why
+;; (2026-11-14: Rica's name was picked to get Zyra a bright picture). A play
+;; from the phone is refused before it starts ("yt-play"). Calm fish videos
+;; are for everyone.
+
+(defn kids-tick! []
+  (when (and (seq child-people) (= "yt" @service) (not (child-people @tv-who)))
+    (when-let [pl (current-player)]
+      (let [info (yt-do (:t pl) "return ok?{title:p.getVideoData().title,channel:p.getVideoData().author,d:p.getDuration(),playing:[1,3].includes(p.getPlayerState())}:null")]
+        (when (and info (:playing info) (kids? info)
+                   (not (fish? {:title (:title info) :dur-s (:d info)})))
+          (yt-do (:t pl) "if(ok)p.pauseVideo();return ok")
+          (reset! kids-block {:at (System/currentTimeMillis) :title (:title info)})
+          (println "children: paused" (pr-str (:title info)) "under" (or @tv-who "-")))))))
+
 ;; ---------------------------------------------------------------- fade
 ;; For a person with :fade-min (ours: Zyra, 15 min, back after 45 min). Their
 ;; watching time is added up across videos (so starting a new one doesn't bring
@@ -3377,6 +3418,7 @@ showNow();
               (try (awake-tick!) (catch Exception e (println "keep-awake:" (ex-message e))))
               (try (music-tick!) (catch Exception e (println "music:" (ex-message e))))
               (try (fade-tick!) (catch Exception e (println "fade:" (ex-message e))))
+              (try (kids-tick!) (catch Exception e (println "children:" (ex-message e))))
               (when (zero? (mod n 5))
                 (try (record-watching-2!)
                      (catch Exception e (println "record-watching:" (ex-message e))))))

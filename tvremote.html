@@ -242,7 +242,7 @@ function showWho(){useQFor(who);document.getElementById('who').textContent=who?(
 // 2026-10-16); with none listed, everyone has it. The others get two buttons.
 var readers=[];
 // Keep this / Not interested taken away from some people in config.edn (2026-10-21)
-var noKeep=[],noNope=[];
+var noKeep=[],noNope=[],childNames=[];
 function may(list){return list.map(slug).indexOf(who)<0;}
 function showReading(){var r=readers||[],p=photoers||[];document.body.classList.toggle('noread',
   r.length>0&&r.map(slug).indexOf(who)<0);
@@ -276,7 +276,7 @@ var whoBusy=false;
 function syncWho(s){if(whoBusy||!s.who||s.who===who)return;
   who=s.who;try{localStorage.setItem('tvremote-who',who);}catch(e){}recentKey='';showWho();}
 function loadPeople(){fetch('/config').then(function(r){return r.json()}).then(function(c){
-  var box=document.getElementById('whobtns'),ps=c.people||[];readers=c.reading||[];photoers=c.photos||[];noKeep=c['no-keep']||[];noNope=c['no-nope']||[];localKey='';showReading();
+  var box=document.getElementById('whobtns'),ps=c.people||[];readers=c.reading||[];photoers=c.photos||[];noKeep=c['no-keep']||[];noNope=c['no-nope']||[];childNames=c.children||[];localKey='';showReading();
   box.innerHTML=ps.length?ps.map(function(p){return '<button data-n="'+esc(p)+'" onclick="setWho(this.dataset.n)">'+esc(p)+'</button>'}).join(''):
     '<input id="whoname" placeholder="Your name" style="flex:1;font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:12px">'+
     '<button onclick="setWho(document.getElementById(\'whoname\').value)">OK</button>';}).catch(function(){});}
@@ -519,6 +519,9 @@ function setLocal(s){var el=document.getElementById('local'),t='';s_svc=s.servic
   var dg=s['nf-dialog'];if(dg){var dk='dlg|'+dg.text+'|'+dg.buttons.join('|');if(dk===localKey)return;localKey=dk;
     el.innerHTML='💬 Netflix on the TV asks: '+esc(dg.text)+'<br>'+dg.buttons.map(function(b,i){
       return '<button style="margin:6px 6px 0 0" onclick="nfDialog(this,'+i+')">'+esc(b)+'</button>';}).join('');return;}
+  // A children's video paused under an adult's name (2026-11-14)
+  var kb=s['kids-blocked'];if(kb){var kk='kids|'+kb;if(kk===localKey)return;localKey=kk;
+    el.textContent='🚸 Children\'s videos play under '+(childNames.join(' or ')||'a child')+'\'s name: paused '+kb;return;}
   // YouTube's end screen waiting for a click (2026-10-27): its title, Play now, Cancel
   var up=s['yt-upnext'];if(up){var uk='up|'+up;if(uk===localKey)return;localKey=uk;
     el.innerHTML='⏭ YouTube up next: '+esc(up)+'<div class="keeprow"><button onclick="ytEnd(this,\'play\')">Play now</button>'+
