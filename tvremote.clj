@@ -2984,6 +2984,42 @@ showNow();
          "if(s)s.remove();return false")
        "})()"))
 
+;; The real pointer nudge (2026-11-19). On the TV (Wayland, GNOME) a page's
+;; cursor:none shows only after the pointer really moves: GNOME Shell draws the
+;; pointer and asks Chrome for its image only then, and neither the made-up CDP
+;; move nor the locked mouse gives it one. pointernudge.py makes a virtual
+;; mouse ("tvremote nudge", which the lock and inputwatch.py skip) and moves it
+;; 1 pixel and back for each line it reads. It needs rw on /dev/uinput (the
+;; udev rule in TVREMOTE.md), so it runs only where the lock can (:input-lock).
+
+(def nudge-proc "pointernudge.py while it runs, or nil." (atom nil))
+(def nudge-failed "When pointernudge.py last ended or failed, ms, or nil." (atom nil))
+
+(defn- nudge-proc!
+  "The running pointernudge.py, started if needed. Not started again within
+   5 minutes of it ending, so a missing permission isn't retried every tick."
+  []
+  (or (when-let [pr @nudge-proc] (when (.isAlive (:proc pr)) pr))
+      (when-not (some-> @nudge-failed (> (- (System/currentTimeMillis) 300000)))
+        (let [pr (p/process {:out :string :err :string}
+                            "python3" (str base-dir "/pointernudge.py"))]
+          (reset! nudge-proc pr)
+          (future (let [r @pr]
+                    (reset! nudge-failed (System/currentTimeMillis))
+                    (println "pointer nudge ended:" (:exit r) (str/trim (str (:err r))))))
+          pr))))
+
+(defn nudge-pointer!
+  "One real 1-pixel move of the TV's pointer, so a page's hidden pointer
+   really disappears. Does nothing without :input-lock."
+  []
+  (when input-lock?
+    (try (when-let [pr (nudge-proc!)]
+           (doto (:in pr) (.write (.getBytes "n\n")) (.flush)))
+         (catch Exception e
+           (reset! nudge-failed (System/currentTimeMillis))
+           (println "pointer nudge:" (ex-message e))))))
+
 (defn hide-cursor-2!
   "As hide-cursor!, plus one made-up mouse move when the style goes in.
    2026-10-19: the style was on the Netflix page but the cursor still showed
@@ -2995,7 +3031,8 @@ showNow();
                             (or (on-site? "netflix.com" %) (on-site? "youtube.com" %)))
                       (targets))]
       (try (when (= "added" (js t (nocursor-js-2 on)))
-             (cdp t "Input.dispatchMouseEvent" {:type "mouseMoved" :x 5 :y 5}))
+             (cdp t "Input.dispatchMouseEvent" {:type "mouseMoved" :x 5 :y 5})
+             (nudge-pointer!))
            (catch Exception _ nil)))))
 
 ;; Reading pages: the pointer hides after 3s without moving (2026-11-19), locked
@@ -3003,21 +3040,24 @@ showNow();
 ;; the tick only installs it and gives the one made-up move Chrome needs to
 ;; redraw the pointer once the style is in (as hide-cursor-2!). That move is at
 ;; the pointer's last place, which the listener ignores, so it can't wake it.
+;; The real 1-pixel nudge (nudge-pointer!) comes at the pointer's real place,
+;; so the page ignores every move for 1.5s after it asks for the nudge.
 
 (def idle-cursor-js
   "Installs the idle pointer hider once per document. Answers {:x :y} when it
    has just hidden the pointer and wants the made-up move, else true."
   "(()=>{let w=window.__tvrIdle;
-   if(!w){w=window.__tvrIdle={hidden:false,nudged:false,x:5,y:5,t:null};
+   if(!w){w=window.__tvrIdle={hidden:false,nudged:false,x:5,y:5,t:null,quiet:0};
      const s=document.createElement('style');s.id='tvr-idlecursor';s.textContent='*{cursor:none!important}';
      const hide=()=>{document.documentElement.appendChild(s);w.hidden=true;w.nudged=false};
      addEventListener('mousemove',e=>{
        if(e.clientX===w.x&&e.clientY===w.y)return;
+       if(Date.now()<w.quiet){w.x=e.clientX;w.y=e.clientY;return}
        w.x=e.clientX;w.y=e.clientY;
        if(w.hidden){s.remove();w.hidden=false}
        clearTimeout(w.t);w.t=setTimeout(hide,3000)},true);
      w.t=setTimeout(hide,3000)}
-   if(w.hidden&&!w.nudged){w.nudged=true;return {x:w.x,y:w.y}}
+   if(w.hidden&&!w.nudged){w.nudged=true;w.quiet=Date.now()+1500;return {x:w.x,y:w.y}}
    return true})()")
 
 (defn reading-tabs
@@ -3034,7 +3074,8 @@ showNow();
   (doseq [t (reading-tabs)]
     (try (let [r (js t idle-cursor-js)]
            (when (map? r)
-             (cdp t "Input.dispatchMouseEvent" {:type "mouseMoved" :x (:x r) :y (:y r)})))
+             (cdp t "Input.dispatchMouseEvent" {:type "mouseMoved" :x (:x r) :y (:y r)})
+             (nudge-pointer!)))
          (catch Exception _ nil))))
 
 (defn frozen-tabs

@@ -5,8 +5,8 @@ only way in. tvremote starts it when the lock is on and stops it to unlock.
 
 Each device is held with EVIOCGRAB (exclusive: the desktop gets no events);
 the kernel lets go the moment this process ends, however it ends. Devices
-plugged in later are picked up within 5s. The power, sleep and lid switches
-are left alone. Typing WORD on any keyboard ends it (exit 0), as a way back in
+plugged in later are picked up within 5s. The power, sleep and lid switches,
+and tvremote's own nudge pointer (pointernudge.py), are left alone. Typing WORD on any keyboard ends it (exit 0), as a way back in
 without the phone.
 
 Exit 2: no permission to the devices (the user needs the 'input' group).
@@ -14,7 +14,9 @@ Standard library only."""
 import fcntl, os, select, struct, sys
 
 EVIOCGRAB = 0x40044590
-SKIP = {"Power Button", "Sleep Button", "Lid Switch"}
+# "tvremote nudge" is pointernudge.py's own made-up pointer: it must move the
+# real pointer while the lock holds the others, and it is not someone at the TV.
+SKIP = {"Power Button", "Sleep Button", "Lid Switch", "tvremote nudge"}
 EVENT = struct.Struct("llHHi")  # time (2 longs), type, code, value
 EV_KEY = 1
 LETTERS = dict(zip([16, 17, 18, 19, 20, 21, 22, 23, 24, 25,

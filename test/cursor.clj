@@ -24,18 +24,20 @@
 
 (defn run-tick
   "Calls f with targets/js/cdp stubbed. js answers with (answer tab expr).
-   Returns {:js [tab ids js ran on] :moves [[tab-id params]]}."
+   Returns {:js [tab ids js ran on] :moves [[tab-id params]] :nudges n}, n
+   the real pointer nudges asked for."
   [f {:keys [locked answer] :or {answer (constantly true)}}]
-  (let [ran (atom []) moves (atom [])]
+  (let [ran (atom []) moves (atom []) nudges (atom 0)]
     (with-redefs [targets (constantly tabs)
                   locked? (constantly locked)
                   js (fn [t expr] (swap! ran conj (:id t)) (answer t expr))
                   cdp (fn [t method params]
                         (when (= "Input.dispatchMouseEvent" method)
                           (swap! moves conj [(:id t) params]))
-                        nil)]
+                        nil)
+                  nudge-pointer! (fn [] (swap! nudges inc))]
       (f))
-    {:js @ran :moves @moves}))
+    {:js @ran :moves @moves :nudges @nudges}))
 
 (deftest hide-cursor-2-tabs
   (testing "locked: Netflix and YouTube only, the style put in on both"
@@ -78,6 +80,25 @@
     (is (re-find #"setTimeout\(hide,3000\)" idle-cursor-js))
     (is (re-find #"return \{x:w\.x,y:w\.y\}" idle-cursor-js))))
 
+(deftest real-nudge
+  (testing "each made-up move also gets one real nudge"
+    (is (= 2 (:nudges (run-tick hide-cursor-2! {:locked true :answer (constantly "added")}))))
+    (with-redefs [page-id (atom "pg") rl-id (atom "rl") rv-id (atom "rv")]
+      (is (= 1 (:nudges (run-tick idle-cursor! {:answer (fn [t _] (if (= "rl" (:id t)) {:x 40 :y 70} true))}))))))
+  (testing "no made-up move: no nudge either"
+    (is (= 0 (:nudges (run-tick hide-cursor-2! {:locked true :answer (constantly true)}))))
+    (is (= 0 (:nudges (run-tick hide-cursor-2! {:locked false}))))
+    (with-redefs [page-id (atom "pg") rl-id (atom "rl") rv-id (atom "rv")]
+      (is (= 0 (:nudges (run-tick idle-cursor! {}))))))
+  (testing "the page ignores moves for 1.5s after it asks for the nudge"
+    (is (re-find #"w\.quiet=Date\.now\(\)\+1500" idle-cursor-js))
+    (is (re-find #"if\(Date\.now\(\)<w\.quiet\)" idle-cursor-js)))
+  (testing "without :input-lock nothing is started"
+    (with-redefs [input-lock? false nudge-proc (atom nil)]
+      (is (nil? (nudge-pointer!)))
+      (is (nil? @nudge-proc)))))
+
 (let [{:keys [fail error test pass]} (t/run-tests 'tvremote)]
   (println (str test " tests, " (+ pass fail error) " checks, " (+ fail error) " failing"))
   (System/exit (if (pos? (+ fail error)) 1 0)))
+
