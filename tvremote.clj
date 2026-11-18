@@ -2983,6 +2983,45 @@ showNow();
              (cdp t "Input.dispatchMouseEvent" {:type "mouseMoved" :x 5 :y 5}))
            (catch Exception _ nil)))))
 
+;; Reading pages: the pointer hides after 3s without moving (2026-11-19), locked
+;; or not, and comes back on the next real move. The page keeps its own timer;
+;; the tick only installs it and gives the one made-up move Chrome needs to
+;; redraw the pointer once the style is in (as hide-cursor-2!). That move is at
+;; the pointer's last place, which the listener ignores, so it can't wake it.
+
+(def idle-cursor-js
+  "Installs the idle pointer hider once per document. Answers {:x :y} when it
+   has just hidden the pointer and wants the made-up move, else true."
+  "(()=>{let w=window.__tvrIdle;
+   if(!w){w=window.__tvrIdle={hidden:false,nudged:false,x:5,y:5,t:null};
+     const s=document.createElement('style');s.id='tvr-idlecursor';s.textContent='*{cursor:none!important}';
+     const hide=()=>{document.documentElement.appendChild(s);w.hidden=true;w.nudged=false};
+     addEventListener('mousemove',e=>{
+       if(e.clientX===w.x&&e.clientY===w.y)return;
+       w.x=e.clientX;w.y=e.clientY;
+       if(w.hidden){s.remove();w.hidden=false}
+       clearTimeout(w.t);w.t=setTimeout(hide,3000)},true);
+     w.t=setTimeout(hide,3000)}
+   if(w.hidden&&!w.nudged){w.nudged=true;return {x:w.x,y:w.y}}
+   return true})()")
+
+(defn reading-tabs
+  "The reading tab, the reading-link tab and the reading-video tab that are
+   open, by their remembered ids only."
+  []
+  (let [ids (set (remove nil? [@page-id @rl-id @rv-id]))]
+    (filter #(and (= "page" (:type %)) (ids (:id %))) (targets))))
+
+(defn idle-cursor!
+  "Each tick: the idle pointer hider in every reading tab, plus its one
+   made-up move when it has just hidden the pointer."
+  []
+  (doseq [t (reading-tabs)]
+    (try (let [r (js t idle-cursor-js)]
+           (when (map? r)
+             (cdp t "Input.dispatchMouseEvent" {:type "mouseMoved" :x (:x r) :y (:y r)})))
+         (catch Exception _ nil))))
+
 (defn frozen-tabs
   "The Netflix and YouTube tabs that don't answer a simple question in 4s.
    Only those two sites: script runs on no other page."
@@ -3411,6 +3450,7 @@ showNow();
             (when (chrome-up?)
               (try (hide-yt-chat!) (catch Exception _ nil))
               (try (hide-cursor-2!) (catch Exception _ nil))
+              (try (idle-cursor!) (catch Exception _ nil))
               (try (photos-guard!) (catch Exception e (println "photos-guard:" (ex-message e))))
               (try (nf-dialog-tick!) (catch Exception e (println "nf-dialog:" (ex-message e))))
               (try (nf-still-watching!) (catch Exception e (println "nf-still-watching:" (ex-message e))))
