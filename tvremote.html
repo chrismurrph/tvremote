@@ -157,7 +157,7 @@ body.offline button,body.offline input{opacity:.4;pointer-events:none}
   <button onclick="pageVideos(this)">🎬 Videos</button>
   <button onclick="pageLinks(this)">🔗 Links</button>
   <button onclick="act(this,'page-reload');document.getElementById('pgvideos').innerHTML=''">↻ Reload</button>
-  <button onclick="act(this,'page-back')">↩ Back to page</button>
+  <button id="pgback" onclick="act(this,'page-back')">↩ Back to page</button>
 </div>
 <div class="pad">
   <button onclick="zoom(this,'out')">A− Smaller</button>
@@ -399,7 +399,9 @@ var svc=null,switching=false;
 function setControls(raw){var reading=(raw==='page'||raw==='rl'),ph=(raw==='ph');
   document.getElementById('phpad').style.display=ph?'':'none';
   document.getElementById('vidpad').style.display=(reading||ph)?'none':'';
-  document.getElementById('readpad').style.display=reading?'':'none';}
+  document.getElementById('readpad').style.display=reading?'':'none';
+  // Back to page only does something while a link is showing (2026-11-19)
+  document.getElementById('pgback').disabled=(raw!=='rl');}
 var wantOpen=false; // Reading pressed with nothing to read: show the link box anyway
 // Each service's last search text, kept in this phone's localStorage like the
 // name, so a refresh doesn't lose it (2026-10-21).
