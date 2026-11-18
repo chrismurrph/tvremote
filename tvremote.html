@@ -164,6 +164,12 @@ body.offline button,body.offline input{opacity:.4;pointer-events:none}
   <button id="zoomval" onclick="zoom(this,'reset')">100%</button>
   <button onclick="zoom(this,'in')">A+ Bigger</button>
 </div>
+<button style="width:100%;margin-top:10px" onclick="toggleShift()">✥ Shift</button>
+<div id="shiftpad" class="pad" style="display:none">
+  <span></span><button onclick="act(this,'page-scroll?how=n')">▲</button><span></span>
+  <button id="shiftw" disabled onclick="act(this,'page-scroll?how=w')">◀</button><span></span><button id="shifte" disabled onclick="act(this,'page-scroll?how=e')">▶</button>
+  <span></span><button onclick="act(this,'page-scroll?how=s')">▼</button><span></span>
+</div>
 </div>
 
 <div class="svc"><button id="svc-nf" onclick="switchTo(this,'nf')">Netflix</button><button id="svc-yt" class="yt" onclick="switchTo(this,'yt')">YouTube</button><button id="svc-page" class="pg" onclick="switchTo(this,'page')">Reading</button><button id="svc-photos" class="ph" onclick="photos(this)">Photos</button></div>
@@ -358,6 +364,7 @@ function poll(){
     renderProfiles(s);
     syncList(s);dropGone(s);
     if(s.zoom)document.getElementById('zoomval').textContent=zoomText(s);
+    setShiftWide(s);
     if(s.service==='rl'){now.textContent='🔗 Level '+(level(s)||'?')+(s.link&&s.link.title?' — '+s.link.title:'');sub.textContent='Tap 📖 or a number to go back';return;}
     if(s.service==='page'){now.textContent='📖 Reading'+(s.page&&s.page.title?' — '+s.page.title:'');sub.textContent='';return;}
     if(s.service==='ph'){var p=s.photo||{};
@@ -658,6 +665,12 @@ function tabClose(b,id){flash(b,'busy');
 // The size shown: on a linked page also its site's adjustment, e.g. 150% (+20).
 function zoomText(r){var a=(r.adj==null)?'':' ('+(r.adj>=0?'+':'−')+Math.round(Math.abs(r.adj)*100)+')';
   return Math.round(r.zoom*100)+'%'+a;}
+// ✥ Shift (2026-11-19): a compass of small moves, open or closed per phone.
+// ◀ and ▶ only work when the page is wider than the screen (/status :wide).
+var shiftOpen=false;try{shiftOpen=localStorage.getItem('tvremote-shift')==='open';}catch(e){}
+function showShift(){document.getElementById('shiftpad').style.display=shiftOpen?'':'none';}
+function toggleShift(){shiftOpen=!shiftOpen;try{localStorage.setItem('tvremote-shift',shiftOpen?'open':'closed');}catch(e){}showShift();}
+function setShiftWide(s){var off=!s.wide;document.getElementById('shiftw').disabled=off;document.getElementById('shifte').disabled=off;}
 function zoom(b,how){flash(b,'busy');
   call('page-zoom?how='+how).then(function(r){flash(b,r.ok?'done':'fail',700);
     if(r.ok)document.getElementById('zoomval').textContent=zoomText(r);else msg(r.error);})
@@ -687,6 +700,7 @@ showWake();keepAwake();
 loadPeople();
 showWho();
 setSvc('nf');
+showShift();
 poll();
 var timer=setInterval(function(){if(!document.hidden)poll();},3000);
 // coming back to the phone (from outside, say): check at once, not in up to 3s

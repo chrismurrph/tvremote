@@ -709,7 +709,12 @@
   (js t (case how
           "down" "window.scrollBy({top:innerHeight*0.8,behavior:'smooth'});true"
           "up"   "window.scrollBy({top:-innerHeight*0.8,behavior:'smooth'});true"
-          "top"  "window.scrollTo({top:0,behavior:'smooth'});true")))
+          "top"  "window.scrollTo({top:0,behavior:'smooth'});true"
+          ;; ✥ Shift (2026-11-19): a small move, so Up and Down then page on from there
+          "n"    "window.scrollBy({top:-innerHeight*0.1,behavior:'smooth'});true"
+          "s"    "window.scrollBy({top:innerHeight*0.1,behavior:'smooth'});true"
+          "w"    "window.scrollBy({left:-innerWidth*0.1,behavior:'smooth'});true"
+          "e"    "window.scrollBy({left:innerWidth*0.1,behavior:'smooth'});true")))
 
 ;; Embeds (src or a lazy data-src) and plain links, in page order.
 (def page-videos-js
@@ -880,6 +885,14 @@
   []
   (or (when (= "rl" @service) (rl-target)) (page-target)))
 
+(def page-wide-js "(()=>{const e=document.scrollingElement||document.documentElement;return e.scrollWidth>e.clientWidth+1})()")
+
+(defn page-wide?
+  "Whether what the reading panel acts on is wider than the screen, so ✥ Shift's
+   ◀ and ▶ can move it (2026-11-19). False when it can't tell."
+  []
+  (true? (try (some-> (reading-target) (js page-wide-js)) (catch Exception _ nil))))
+
 ;; ---------------------------------------------------------------- Status
 
 (defn status
@@ -1016,7 +1029,9 @@
                                      (if l
                                        (let [a (get-in (load-state) [:zoom-adj user (host-of (:url l))] 0.0)]
                                          {:zoom (tenth (min 3.0 (max 0.5 (+ b a)))) :adj a})
-                                       {:zoom b}))))))
+                                       {:zoom b})))
+      ;; for ✥ Shift: ◀ and ▶ are greyed out unless the page is wider than the screen
+      (#{"page" "rl"} svc)  (assoc :wide (page-wide?)))))
 
 ;; ---------------------------------------------------------------- Watching
 ;; One current service — "nf", "yt" or "page" — and, for the two players, what
