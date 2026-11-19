@@ -3440,6 +3440,94 @@ showNow();
       (println "fade:" (or u "-") (str (Math/round (* 100 b)) "%")))
     (reset! fade-shown b)))
 
+;; ---------------------------------------------------------------- switcher tag
+;; Lost Switcher (2026-11-19): a Bluetooth "iTag" tag stuck to the TV's
+;; switcher, at the address in config :switcher-tag. This computer holds a
+;; connection to it all the time (BlueZ, through bluetoothctl and busctl), so
+;; the phone's Beep and Stop are a plain request here (/tag?level=1 or 0): no
+;; Bluetooth on the phone, so any phone and no pop-up. The tag sounds its own
+;; alarm for ~15s whenever a connection drops, and it has no Link Loss service
+;; to turn that off, so the connection is never let go on purpose. tag-tick!
+;; (every 30s, in its own loop: a connect can take 20s) reconnects after a drop.
+
+(def switcher-tag
+  "The switcher tag's Bluetooth address (config :switcher-tag), or nil: no tag."
+  (some-> (:switcher-tag config) str/upper-case))
+
+(defn tag-run
+  "Runs a command, giving up after ms: its output, or nil if it failed or hung."
+  [ms & cmd]
+  (try (let [pr (apply p/process {:out :string :err :string} cmd)
+             r  (deref pr ms nil)]
+         (if r
+           (when (zero? (:exit r)) (:out r))
+           (do (p/destroy-tree pr) nil)))
+       (catch Exception _ nil)))
+
+(defn tag-path [] (str "/org/bluez/hci0/dev_" (str/replace switcher-tag ":" "_")))
+
+(defn tag-connected? []
+  (= "b true" (some-> (tag-run 5000 "busctl" "get-property" "org.bluez" (tag-path)
+                               "org.bluez.Device1" "Connected")
+                      str/trim)))
+
+(defn tag-alert-char
+  "The D-Bus path of the tag's Alert Level (0x2a06) under Immediate Alert
+   (0x1802), found by UUID, or nil while it isn't connected."
+  []
+  (let [uuid (fn [path iface] (or (some-> (tag-run 5000 "busctl" "get-property" "org.bluez" path iface "UUID")
+                                          str/trim)
+                                  ""))]
+    (->> (some-> (tag-run 5000 "busctl" "tree" "org.bluez" "--list") str/split-lines)
+         (filter #(re-find (re-pattern (str (tag-path) "/service[0-9a-f]+/char[0-9a-f]+$")) %))
+         (filter #(and (str/includes? (uuid % "org.bluez.GattCharacteristic1") "00002a06")
+                       (str/includes? (uuid (str/replace % #"/char[0-9a-f]+$" "") "org.bluez.GattService1")
+                                      "00001802")))
+         first)))
+
+(def tag-char "The Alert Level's path while connected (tag-alert-char), else nil." (atom nil))
+(def tag-up "Whether the last tag-tick! found the tag connected, for logging changes." (atom nil))
+
+(defn tag-tick! []
+  (let [up (or (tag-connected?)
+               (do (reset! tag-char nil)
+                   ;; BlueZ forgets an unpaired device it hasn't heard lately: scan first
+                   (tag-run 15000 "bluetoothctl" "--timeout" "10" "scan" "le")
+                   (tag-run 30000 "bluetoothctl" "--timeout" "20" "connect" switcher-tag)
+                   (Thread/sleep 2000)
+                   (tag-connected?)))]
+    (when (not= up @tag-up)
+      (println "switcher tag:" (if up "connected" "not found"))
+      (flush))
+    (reset! tag-up up)))
+
+(defn tag-beep!
+  "Sets the switcher tag's alert: level 1 beeps, 0 stops."
+  [level]
+  (cond
+    (nil? switcher-tag) {:ok false :error "No switcher tag in config.edn (:switcher-tag)"}
+    (not (tag-connected?)) {:ok false :error "The TV computer can't reach the switcher's tag right now"}
+    :else
+    (let [c (or @tag-char (reset! tag-char (tag-alert-char)))]
+      (if (and c (tag-run 10000 "busctl" "call" "org.bluez" c "org.bluez.GattCharacteristic1"
+                          "WriteValue" "aya{sv}" "1" (str level) "0"))
+        {:ok true}
+        (do (reset! tag-char nil)
+            {:ok false :error "The switcher's tag didn't take it"})))))
+
+(defn handler-17
+  "handler-16, plus /tag?level=1 (beep) or 0 (stop): the switcher's tag,
+   through this computer's Bluetooth. Logged like a press."
+  [req]
+  (if (= "/tag" (:uri req))
+    (let [q (query req)
+          r (tag-beep! (if (= "0" (:level q)) 0 1))]
+      (println (str (or (:u q) "-") " @" (:remote-addr req) " tag level=" (:level q) " "
+                    (if (:ok r) "ok" (str "FAILED: " (:error r)))))
+      (flush)
+      (reply r))
+    (handler-16 req)))
+
 ;; ---------------------------------------------------------------- keep awake
 ;; The real cause of the "HDMI drops" (2026-10-22): GNOME blanks the screen
 ;; after 15 idle minutes, and phone presses aren't user input, so it blanked
@@ -3474,7 +3562,7 @@ showNow();
           (println "screen: blanked (15 min, nothing playing, no press)")))))
 
 (defn -main []
-  (server/run-server handler-16 {:port port :ip "0.0.0.0" :thread 8})
+  (server/run-server handler-17 {:port port :ip "0.0.0.0" :thread 8})
   (println "tvremote on port" port)
   (reset! last-saved (:watched (load-state) {}))
   (reset! last-saved-2 (into {} (for [[user m] (:watched-by (load-state))
@@ -3519,6 +3607,12 @@ showNow();
                 (try (record-watching-2!)
                      (catch Exception e (println "record-watching:" (ex-message e))))))
             (recur (inc n))))
+  ;; Lost Switcher: its own loop, since a connect can take 20s
+  (when switcher-tag
+    (future (loop []
+              (try (tag-tick!) (catch Exception e (println "switcher tag:" (ex-message e))))
+              (Thread/sleep 30000)
+              (recur))))
   @(promise))
 
 (when (= *file* (System/getProperty "babashka.file")) (-main))

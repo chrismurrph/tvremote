@@ -44,4 +44,9 @@
  ;; where Archive moves a photo to (same path below it; nothing is deleted).
  ;; Keep the archive outside :photos-dir, on the same disk.
  :photos-dir nil                  ; e.g. "/mnt/nasrica/Photos"
- :photos-archive nil}             ; e.g. "/mnt/nasrica/Archived photos"
+ :photos-archive nil              ; e.g. "/mnt/nasrica/Archived photos"
+
+ ;; Lost Switcher: the Bluetooth address of a tag (a generic "iTag") stuck to
+ ;; the TV's switcher. This computer stays connected to it, and ⋯ More → Beep
+ ;; makes it beep. nil: no tag, and Beep says so.
+ :switcher-tag nil}               ; e.g. "FF:FF:12:B6:10:1F"

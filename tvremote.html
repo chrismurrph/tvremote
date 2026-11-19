@@ -27,7 +27,7 @@ button:active{transform:scale(.96)}
 button:disabled{opacity:.4;cursor:default}
 /* greyed while the TV is busy with a press, or (all but Start) while Chrome is down */
 /* and everything but the names until the phone knows who holds it */
-/* .bt (Lost Switcher) talks only to the Bluetooth tag, never the TV, so it stays live */
+/* .bt (Lost Switcher) needs neither Chrome nor the screen (the TV computer beeps the tag), so it stays live */
 body.nowho button:not(#whobtns button):not(.bt),body.nowho input:not(#whoname){opacity:.4;pointer-events:none}
 body.busy button:not(#who):not(.bt),body.nochrome button:not(#who):not(#startbtn):not(#closeall):not(#lockbtn):not(#shutbtn):not(.bt){opacity:.4;pointer-events:none}
 button.big{font-size:26px;padding:18px 6px}
@@ -193,13 +193,12 @@ body.offline button:not(.bt),body.offline input{opacity:.4;pointer-events:none}
 
 <details id="more">
 <summary>⋯ More: lost switcher, share, tabs, lock, shut down</summary>
-<h2>📍 Lost Switcher (FF:FF:12:B6:10:1F)</h2>
+<h2>📍 Lost Switcher</h2>
 <div style="display:flex;gap:8px">
-<button class="bt" id="btconn" style="flex:1" onclick="btConnect(this)">Connect</button>
-<button class="bt" id="btbeep" style="flex:1" onclick="btBeep(this,1)" disabled>Beep</button>
-<button class="bt" id="btstop" style="flex:1" onclick="btBeep(this,0)" disabled>Stop</button>
+<button class="bt" style="flex:1" onclick="tagBeep(this,1)">Beep</button>
+<button class="bt" style="flex:1" onclick="tagBeep(this,0)">Stop</button>
 </div>
-<p id="btnote" style="color:var(--soft);margin:6px 0 0">Makes the tag on the switcher beep. Press its button first if it has been asleep, then Connect and pick it.</p>
+<p id="btnote" style="color:var(--soft);margin:6px 0 0">Makes the tag on the switcher beep, through the TV computer.</p>
 
 <h2>📱 Share the remote</h2>
 <button id="sharebtn" style="width:100%" onclick="act(this,sharing?'share-off':'share?host='+encodeURIComponent(location.host))">Show a QR code on the TV</button>
@@ -693,91 +692,18 @@ function play(b,id,title){flash(b,'busy');
   call((svc==='yt'?'yt-play':'play')+'?id='+id+'&t='+encodeURIComponent(title)).then(function(r){flash(b,r.ok?'done':'fail',1500);msg(r.ok?'Starting '+title+' on the TV':r.error);setTimeout(poll,2500);})
   .catch(function(e){flash(b,'fail',1500);msg('No answer: '+e);});}
 
-// Lost Switcher (2026-11-19): a cheap Bluetooth tag (generic "iTag") is
-// stuck to the TV's switcher, and beeps when the phone writes to its standard
-// Immediate Alert service. Phone to tag directly (Web Bluetooth): the TV
-// computer plays no part, so these buttons stay live when the TV is busy or
-// gone (.bt in the CSS). Chrome allows Web Bluetooth only on a secure address,
-// the same chrome://flags entry as the wake lock. Level 1 beeps on our tags
-// (tested in nRF Connect). Chrome asks to pick the tag on each page load,
-// unless it allows reconnecting to the remembered tag (btKnown).
-var BT_ALERT=0x1802,BT_LINKLOSS=0x1803,BT_LEVEL=0x2a06,btAlert=null;
-function btNote(t){document.getElementById('btnote').textContent=t;}
-function btLive(on){document.getElementById('btbeep').disabled=!on;document.getElementById('btstop').disabled=!on;}
-function btWrite(c,v){var d=Uint8Array.of(v);
-  return c.properties.writeWithoutResponse?c.writeValueWithoutResponse(d):c.writeValueWithResponse(d);}
-// Which tag is the switcher's: all our tags are named "iTAG", so the pop-up
-// tells them apart only by address, and the heading gives the switcher tag's.
-// The tag picked in the pop-up is remembered (Chrome's id for it, in
-// localStorage 'tvremote-bt-tag') for the next Connect with no pop-up.
-// The other tag is the one on the keys (Lost Keys page).
-var btDev=null;
-function btMine(){try{return localStorage.getItem('tvremote-bt-tag');}catch(e){return null;}}
-function btKeep(id){try{localStorage.setItem('tvremote-bt-tag',id);}catch(e){}}
-// Connect, in order: the remembered tag with no pop-up, where Chrome allows it
-// (navigator.bluetooth.getDevices, Chrome's newer Bluetooth permissions), else
-// Chrome's pop-up, which lists only tags. A remembered
-// tag that doesn't answer sends the next press to the pop-up: by then Chrome
-// no longer counts the tap, so the page can't open the pop-up itself.
-// btWhy says why the pop-up was needed; it shows after the connect (2026-11-19,
-// while the no-pop-up path worked on Lost Keys but not here).
-var btPick=false,btWhy='';
-function btKnown(){var id=btMine();
-  btWhy=btPick?'the last try didn\'t reach it':!id?'no tag remembered yet'
-       :!navigator.bluetooth.getDevices?'this Chrome can\'t reconnect by itself':'';
-  if(btWhy)return Promise.resolve(null);
-  return navigator.bluetooth.getDevices().then(function(ds){
-      var d=ds.filter(function(d){return d.id===id;})[0]||null;
-      if(!d)btWhy='Chrome kept '+ds.length+' tag'+(ds.length===1?'':'s')+' for this page, not the remembered one';
-      return d;})
-    .catch(function(e){btWhy='Chrome refused: '+e.message;return null;});}
-function btChoose(){
-  var opts={filters:[{namePrefix:'iTAG'},{namePrefix:'iTag'},{namePrefix:'ITAG'},{services:[BT_ALERT]}]};
-  opts.optionalServices=[BT_ALERT,BT_LINKLOSS];
-  return navigator.bluetooth.requestDevice(opts);}
-function btWithin(ms,p){return Promise.race([p,new Promise(function(_,no){
-  setTimeout(function(){no(new Error('it didn\'t answer'));},ms);})]);}
-// A remembered tag may need to be heard advertising before Chrome can connect
-// to it (watchAdvertisements); where that isn't there, connect straight away.
-function btReach(dev){
-  if(!dev.watchAdvertisements)return dev.gatt.connect();
-  var stop=new AbortController();
-  return btWithin(10000,new Promise(function(ok,no){
-      dev.addEventListener('advertisementreceived',function(){ok();},{once:true});
-      dev.watchAdvertisements({signal:stop.signal}).catch(no);}))
-    .then(function(){stop.abort();return dev.gatt.connect();},
-          function(e){stop.abort();throw e;});}
-function btAttach(dev,known){var server;
-  if(!dev.btWatched){dev.btWatched=true;
-    dev.addEventListener('gattserverdisconnected',function(){btAlert=null;btLive(false);
-      btNote('The tag disconnected. Press Connect to find it again.');});}
-  btNote(known?'Connecting to the switcher\'s tag…':'Connecting to '+((dev.name||'the tag').trim())+'…');
-  return btWithin(15000,known?btReach(dev):dev.gatt.connect())
-    .then(function(s){server=s;return s.getPrimaryService(BT_ALERT);})
-    .then(function(svc){return svc.getCharacteristic(BT_LEVEL);})
-    .then(function(c){btAlert=c;
-      // Turn off the tag's own "phone walked away" alarm, if it has one.
-      return server.getPrimaryService(BT_LINKLOSS)
-        .then(function(svc){return svc.getCharacteristic(BT_LEVEL);})
-        .then(function(ll){return btWrite(ll,0);}).catch(function(){});})
-    .then(function(){return dev;});}
-function btConnect(b){
-  if(!navigator.bluetooth){btNote('Bluetooth isn\'t available here: it needs Chrome on Android, with this address marked secure in chrome://flags (as for "Screen stays on").');return;}
-  flash(b,'busy');
-  btKnown().then(function(known){
-      if(known)return btAttach(known,true).catch(function(e){btPick=true;
-        throw {name:'Unreached',message:e.message};});
-      return btChoose().then(function(d){return btAttach(d,false);});})
-    .then(function(dev){btPick=false;btLive(true);flash(b,'done',900);btDev=dev;
-      btKeep(dev.id);
-      btNote('Connected to the switcher\'s tag. Press Beep.'+(btWhy?' (Pop-up needed: '+btWhy+'.)':''));})
-    .catch(function(e){flash(b,'fail',900);
-      if(e.name==='Unreached')btNote('Couldn\'t reach the switcher\'s tag ('+e.message+'). Press its button, then Connect again to pick it from the list.');
-      else if(e.name==='NotFoundError')btNote('');
-      else btNote('Couldn\'t connect: '+e.message);});}
-function btBeep(b,level){if(!btAlert)return;flash(b,'busy');
-  btWrite(btAlert,level).then(function(){flash(b,'done',600);btNote(level?'Beeping. Press Stop when you have found it.':'Stopped.');})
-    .catch(function(e){flash(b,'fail',900);btNote('The tag didn\'t take it: '+e.message);});}
+// Lost Switcher (2026-11-19): a Bluetooth tag (generic "iTag") is stuck to the
+// TV's switcher, and the TV computer holds a connection to it all the time
+// (tvremote.clj, "switcher tag"). Beep and Stop ask the TV computer (/tag), so
+// the phone does no Bluetooth: any phone, no pop-up. Not call(): the beep
+// needs neither Chrome nor the screen, and never waits on another press, so
+// these buttons (.bt) stay live when the TV is busy or Chrome is down.
+function tagBeep(b,level){flash(b,'busy');
+  fetch('/tag?level='+level+'&u='+encodeURIComponent(who||''),{cache:'no-store'})
+    .then(function(r){return r.json();})
+    .then(function(r){flash(b,r.ok?'done':'fail',900);
+      document.getElementById('btnote').textContent=!r.ok?r.error:level?'Beeping. Press Stop when you have found it.':'Stopped.';})
+    .catch(function(e){flash(b,'fail',900);document.getElementById('btnote').textContent='No answer from the TV computer: '+e;});}
 
 // Keep the phone's screen on while the remote is open and in front (Screen
 // Wake Lock). Chrome allows it only on a secure address, so each phone marks
