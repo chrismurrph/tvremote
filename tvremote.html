@@ -723,11 +723,18 @@ function btThis(){if(!btDev)return;btKeep(btDev.id);document.getElementById('btt
 // (cancelled or none found), the next lists every nearby device. A remembered
 // tag that doesn't answer sends the next press to the pop-up: by then Chrome
 // no longer counts the tap, so the page can't open the pop-up itself.
-var btPick=false;
+// btWhy says why the pop-up was needed; it shows after the connect (2026-11-19,
+// while the no-pop-up path worked on Lost Keys but not here).
+var btPick=false,btWhy='';
 function btKnown(){var id=btMine();
-  if(btPick||!id||!navigator.bluetooth.getDevices)return Promise.resolve(null);
+  btWhy=btPick?'the last try didn\'t reach it':!id?'no tag remembered yet'
+       :!navigator.bluetooth.getDevices?'this Chrome can\'t reconnect by itself':'';
+  if(btWhy)return Promise.resolve(null);
   return navigator.bluetooth.getDevices().then(function(ds){
-    return ds.filter(function(d){return d.id===id;})[0]||null;}).catch(function(){return null;});}
+      var d=ds.filter(function(d){return d.id===id;})[0]||null;
+      if(!d)btWhy='Chrome kept '+ds.length+' tag'+(ds.length===1?'':'s')+' for this page, not the remembered one';
+      return d;})
+    .catch(function(e){btWhy='Chrome refused: '+e.message;return null;});}
 function btChoose(){
   var opts=btAll?{acceptAllDevices:true}:{filters:[{namePrefix:'iTAG'},{namePrefix:'iTag'},{namePrefix:'ITAG'},{services:[BT_ALERT]}]};
   opts.optionalServices=[BT_ALERT,BT_LINKLOSS];
@@ -770,7 +777,7 @@ function btConnect(b){
       var other=!!mine&&mine!==dev.id;
       document.getElementById('btthis').style.display=other?'':'none';
       btNote(other?'That is the Keys tag, not the switcher\'s. Press Connect and pick the other one.'
-                  :'Connected to the switcher\'s tag. Press Beep.');})
+                  :'Connected to the switcher\'s tag. Press Beep.'+(btWhy?' (Pop-up needed: '+btWhy+'.)':''));})
     .catch(function(e){flash(b,'fail',900);
       if(e.name==='Unreached')btNote('Couldn\'t reach the switcher\'s tag ('+e.message+'). Press its button, then Connect again to pick it from the list.');
       else if(e.name==='NotFoundError'&&!btAll){btAll=true;btNote('Tag not listed? Press its button, then Connect again: the list will show every nearby device.');}
