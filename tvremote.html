@@ -700,7 +700,8 @@ function play(b,id,title){flash(b,'busy');
 // computer plays no part, so these buttons stay live when the TV is busy or
 // gone (.bt in the CSS). Chrome allows Web Bluetooth only on a secure address,
 // the same chrome://flags entry as the wake lock. Level 1 beeps on our tags
-// (tested in nRF Connect). Chrome asks to pick the tag on each page load.
+// (tested in nRF Connect). Chrome asks to pick the tag on each page load,
+// unless it allows reconnecting to the remembered tag (btKnown).
 var BT_ALERT=0x1802,BT_LINKLOSS=0x1803,BT_LEVEL=0x2a06,btAlert=null,btAll=false;
 function btNote(t){document.getElementById('btnote').textContent=t;}
 function btLive(on){document.getElementById('btbeep').disabled=!on;document.getElementById('btstop').disabled=!on;}
@@ -716,18 +717,39 @@ function btMine(){try{return localStorage.getItem('tvremote-bt-tag');}catch(e){r
 function btKeep(id){try{localStorage.setItem('tvremote-bt-tag',id);}catch(e){}}
 function btThis(){if(!btDev)return;btKeep(btDev.id);document.getElementById('btthis').style.display='none';
   btNote('Remembered: this is the switcher\'s tag. Press Beep.');}
-// The first Connect lists only tags; if the tag isn't there (cancelled or none
-// found), the next Connect lists every nearby Bluetooth device.
-function btConnect(b){
-  if(!navigator.bluetooth){btNote('Bluetooth isn\'t available here: it needs Chrome on Android, with this address marked secure in chrome://flags (as for "Screen stays on").');return;}
+// Connect, in order: the remembered tag with no pop-up, where Chrome allows it
+// (navigator.bluetooth.getDevices, Chrome's newer Bluetooth permissions), else
+// Chrome's pop-up. The first pop-up lists only tags; if the tag isn't there
+// (cancelled or none found), the next lists every nearby device. A remembered
+// tag that doesn't answer sends the next press to the pop-up: by then Chrome
+// no longer counts the tap, so the page can't open the pop-up itself.
+var btPick=false;
+function btKnown(){var id=btMine();
+  if(btPick||!id||!navigator.bluetooth.getDevices)return Promise.resolve(null);
+  return navigator.bluetooth.getDevices().then(function(ds){
+    return ds.filter(function(d){return d.id===id;})[0]||null;}).catch(function(){return null;});}
+function btChoose(){
   var opts=btAll?{acceptAllDevices:true}:{filters:[{namePrefix:'iTAG'},{namePrefix:'iTag'},{namePrefix:'ITAG'},{services:[BT_ALERT]}]};
   opts.optionalServices=[BT_ALERT,BT_LINKLOSS];
-  var dev,server;flash(b,'busy');
-  navigator.bluetooth.requestDevice(opts).then(function(d){dev=d;
-      dev.addEventListener('gattserverdisconnected',function(){btAlert=null;btLive(false);
-        btNote('The tag disconnected. Press Connect to find it again.');});
-      btNote('Connecting to '+((dev.name||'the tag').trim())+'…');
-      return dev.gatt.connect();})
+  return navigator.bluetooth.requestDevice(opts);}
+function btWithin(ms,p){return Promise.race([p,new Promise(function(_,no){
+  setTimeout(function(){no(new Error('it didn\'t answer'));},ms);})]);}
+// A remembered tag may need to be heard advertising before Chrome can connect
+// to it (watchAdvertisements); where that isn't there, connect straight away.
+function btReach(dev){
+  if(!dev.watchAdvertisements)return dev.gatt.connect();
+  var stop=new AbortController();
+  return btWithin(10000,new Promise(function(ok,no){
+      dev.addEventListener('advertisementreceived',function(){ok();},{once:true});
+      dev.watchAdvertisements({signal:stop.signal}).catch(no);}))
+    .then(function(){stop.abort();return dev.gatt.connect();},
+          function(e){stop.abort();throw e;});}
+function btAttach(dev,known){var server;
+  if(!dev.btWatched){dev.btWatched=true;
+    dev.addEventListener('gattserverdisconnected',function(){btAlert=null;btLive(false);
+      btNote('The tag disconnected. Press Connect to find it again.');});}
+  btNote(known?'Connecting to the switcher\'s tag…':'Connecting to '+((dev.name||'the tag').trim())+'…');
+  return btWithin(15000,known?btReach(dev):dev.gatt.connect())
     .then(function(s){server=s;return s.getPrimaryService(BT_ALERT);})
     .then(function(svc){return svc.getCharacteristic(BT_LEVEL);})
     .then(function(c){btAlert=c;
@@ -735,14 +757,23 @@ function btConnect(b){
       return server.getPrimaryService(BT_LINKLOSS)
         .then(function(svc){return svc.getCharacteristic(BT_LEVEL);})
         .then(function(ll){return btWrite(ll,0);}).catch(function(){});})
-    .then(function(){btAll=false;btLive(true);flash(b,'done',900);btDev=dev;
+    .then(function(){return dev;});}
+function btConnect(b){
+  if(!navigator.bluetooth){btNote('Bluetooth isn\'t available here: it needs Chrome on Android, with this address marked secure in chrome://flags (as for "Screen stays on").');return;}
+  flash(b,'busy');
+  btKnown().then(function(known){
+      if(known)return btAttach(known,true).catch(function(e){btPick=true;
+        throw {name:'Unreached',message:e.message};});
+      return btChoose().then(function(d){return btAttach(d,false);});})
+    .then(function(dev){btAll=false;btPick=false;btLive(true);flash(b,'done',900);btDev=dev;
       var mine=btMine();if(!mine)btKeep(dev.id);
       var other=!!mine&&mine!==dev.id;
       document.getElementById('btthis').style.display=other?'':'none';
       btNote(other?'That is the Keys tag, not the switcher\'s. Press Connect and pick the other one.'
                   :'Connected to the switcher\'s tag. Press Beep.');})
     .catch(function(e){flash(b,'fail',900);
-      if(e.name==='NotFoundError'&&!btAll){btAll=true;btNote('Tag not listed? Press its button, then Connect again: the list will show every nearby device.');}
+      if(e.name==='Unreached')btNote('Couldn\'t reach the switcher\'s tag ('+e.message+'). Press its button, then Connect again to pick it from the list.');
+      else if(e.name==='NotFoundError'&&!btAll){btAll=true;btNote('Tag not listed? Press its button, then Connect again: the list will show every nearby device.');}
       else btNote('Couldn\'t connect: '+e.message);});}
 function btBeep(b,level){if(!btAlert)return;flash(b,'busy');
   btWrite(btAlert,level).then(function(){flash(b,'done',600);btNote(level?'Beeping. Press Stop when you have found it.':'Stopped.');})
