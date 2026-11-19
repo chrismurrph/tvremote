@@ -27,8 +27,9 @@ button:active{transform:scale(.96)}
 button:disabled{opacity:.4;cursor:default}
 /* greyed while the TV is busy with a press, or (all but Start) while Chrome is down */
 /* and everything but the names until the phone knows who holds it */
-body.nowho button:not(#whobtns button),body.nowho input:not(#whoname){opacity:.4;pointer-events:none}
-body.busy button:not(#who),body.nochrome button:not(#who):not(#startbtn):not(#closeall):not(#lockbtn):not(#shutbtn){opacity:.4;pointer-events:none}
+/* .bt (Lost Switcher) talks only to the Bluetooth tag, never the TV, so it stays live */
+body.nowho button:not(#whobtns button):not(.bt),body.nowho input:not(#whoname){opacity:.4;pointer-events:none}
+body.busy button:not(#who):not(.bt),body.nochrome button:not(#who):not(#startbtn):not(#closeall):not(#lockbtn):not(#shutbtn):not(.bt){opacity:.4;pointer-events:none}
 button.big{font-size:26px;padding:18px 6px}
 button.busy{background:#444}
 button.done{background:var(--ok)}
@@ -103,7 +104,7 @@ button.red{background:var(--red);border-color:var(--red)}
 #offline{position:sticky;top:0;z-index:11;background:var(--bad);color:#fff;font-weight:700;font-size:20px;text-align:center;padding:16px;border-radius:12px;margin-bottom:12px;display:none}
 #offline small{display:block;font-weight:400;font-size:15px;margin-top:4px}
 body.offline #offline{display:block}
-body.offline button,body.offline input{opacity:.4;pointer-events:none}
+body.offline button:not(.bt),body.offline input{opacity:.4;pointer-events:none}
 </style>
 </head>
 <body>
@@ -191,7 +192,15 @@ body.offline button,body.offline input{opacity:.4;pointer-events:none}
 </div>
 
 <details id="more">
-<summary>⋯ More: share, tabs, lock, shut down</summary>
+<summary>⋯ More: lost switcher, share, tabs, lock, shut down</summary>
+<h2>📍 Lost Switcher</h2>
+<div style="display:flex;gap:8px">
+<button class="bt" id="btconn" style="flex:1" onclick="btConnect(this)">Connect</button>
+<button class="bt" id="btbeep" style="flex:1" onclick="btBeep(this,1)" disabled>Beep</button>
+<button class="bt" id="btstop" style="flex:1" onclick="btBeep(this,0)" disabled>Stop</button>
+</div>
+<p id="btnote" style="color:var(--soft);margin:6px 0 0">Makes the tag on the switcher beep. Press its button first if it has been asleep, then Connect and pick it.</p>
+
 <h2>📱 Share the remote</h2>
 <button id="sharebtn" style="width:100%" onclick="act(this,sharing?'share-off':'share?host='+encodeURIComponent(location.host))">Show a QR code on the TV</button>
 <p style="color:var(--soft);margin:6px 0 0">Someone else scans it with their phone's camera to get the remote.</p>
@@ -683,6 +692,46 @@ function search(b){var q=document.getElementById('q').value.trim();if(!q)return;
 function play(b,id,title){flash(b,'busy');
   call((svc==='yt'?'yt-play':'play')+'?id='+id+'&t='+encodeURIComponent(title)).then(function(r){flash(b,r.ok?'done':'fail',1500);msg(r.ok?'Starting '+title+' on the TV':r.error);setTimeout(poll,2500);})
   .catch(function(e){flash(b,'fail',1500);msg('No answer: '+e);});}
+
+// Lost Switcher (2026-11-19): a cheap Bluetooth tag (generic "iTag") is
+// stuck to the TV's switcher, and beeps when the phone writes to its standard
+// Immediate Alert service. Phone to tag directly (Web Bluetooth): the TV
+// computer plays no part, so these buttons stay live when the TV is busy or
+// gone (.bt in the CSS). Chrome allows Web Bluetooth only on a secure address,
+// the same chrome://flags entry as the wake lock. Level 1 beeps on our tags
+// (tested in nRF Connect). Chrome asks to pick the tag on each page load.
+var BT_ALERT=0x1802,BT_LINKLOSS=0x1803,BT_LEVEL=0x2a06,btAlert=null,btAll=false;
+function btNote(t){document.getElementById('btnote').textContent=t;}
+function btLive(on){document.getElementById('btbeep').disabled=!on;document.getElementById('btstop').disabled=!on;}
+function btWrite(c,v){var d=Uint8Array.of(v);
+  return c.properties.writeWithoutResponse?c.writeValueWithoutResponse(d):c.writeValueWithResponse(d);}
+// The first Connect lists only tags; if the tag isn't there (cancelled or none
+// found), the next Connect lists every nearby Bluetooth device.
+function btConnect(b){
+  if(!navigator.bluetooth){btNote('Bluetooth isn\'t available here: it needs Chrome on Android, with this address marked secure in chrome://flags (as for "Screen stays on").');return;}
+  var opts=btAll?{acceptAllDevices:true}:{filters:[{namePrefix:'iTAG'},{namePrefix:'iTag'},{namePrefix:'ITAG'},{services:[BT_ALERT]}]};
+  opts.optionalServices=[BT_ALERT,BT_LINKLOSS];
+  var dev,server;flash(b,'busy');
+  navigator.bluetooth.requestDevice(opts).then(function(d){dev=d;
+      dev.addEventListener('gattserverdisconnected',function(){btAlert=null;btLive(false);
+        btNote('The tag disconnected. Press Connect to find it again.');});
+      btNote('Connecting to '+((dev.name||'the tag').trim())+'…');
+      return dev.gatt.connect();})
+    .then(function(s){server=s;return s.getPrimaryService(BT_ALERT);})
+    .then(function(svc){return svc.getCharacteristic(BT_LEVEL);})
+    .then(function(c){btAlert=c;
+      // Turn off the tag's own "phone walked away" alarm, if it has one.
+      return server.getPrimaryService(BT_LINKLOSS)
+        .then(function(svc){return svc.getCharacteristic(BT_LEVEL);})
+        .then(function(ll){return btWrite(ll,0);}).catch(function(){});})
+    .then(function(){btAll=false;btLive(true);flash(b,'done',900);
+      btNote('Connected to '+((dev.name||'the tag').trim())+'. Press Beep.');})
+    .catch(function(e){flash(b,'fail',900);
+      if(e.name==='NotFoundError'&&!btAll){btAll=true;btNote('Tag not listed? Press its button, then Connect again: the list will show every nearby device.');}
+      else btNote('Couldn\'t connect: '+e.message);});}
+function btBeep(b,level){if(!btAlert)return;flash(b,'busy');
+  btWrite(btAlert,level).then(function(){flash(b,'done',600);btNote(level?'Beeping. Press Stop when you have found it.':'Stopped.');})
+    .catch(function(e){flash(b,'fail',900);btNote('The tag didn\'t take it: '+e.message);});}
 
 // Keep the phone's screen on while the remote is open and in front (Screen
 // Wake Lock). Chrome allows it only on a secure address, so each phone marks
