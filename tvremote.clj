@@ -893,6 +893,100 @@
   []
   (true? (try (some-> (reading-target) (js page-wide-js)) (catch Exception _ nil))))
 
+;; ---------------------------------------------------------------- A page's own video
+;; (2026-11-21) A video stored in the page itself, such as a Substack video
+;; post, plays in place in the reading tab: service "pv". It shows first in 🎬
+;; Videos, plays full screen from the person's place, and the transport buttons
+;; act on it. It plays only while "pv" is current (pv-guard!).
+
+(def pv-video-js
+  "The page's own video: the biggest <video> on it, or null."
+  "(()=>{const vs=[...document.querySelectorAll('video')];
+   return vs.sort((a,b)=>(b.offsetWidth*b.offsetHeight)-(a.offsetWidth*a.offsetHeight))[0]||null})()")
+
+(def page-media-js
+  "The 🎬 Videos entry for the page's own video, or null when it has none: a
+   <video>, or a player not started yet (Substack's has no <video> until its
+   play button is pressed)."
+  (str "(()=>{const v=" pv-video-js ";
+   if(!v&&!document.querySelector('[class*=\"video-player\"]'))return null;
+   const m=document.querySelector('meta[property=\"og:image\"]');
+   return {id:'here',here:true,title:'This page\\'s video: '+document.title,
+     img:(v&&v.poster)||(m&&m.content)||''}})()"))
+
+(defn pv-start-js
+  "Script that starts the page's own video (pressing the player's play button
+   first if there is no <video> yet), at second `at` unless that is within 30s
+   of the end, then full screen. Answers whether it is playing."
+  [at]
+  (str "(async()=>{const find=()=>" pv-video-js ";let v=find();
+   if(!v){const b=document.querySelector('button[class*=\"video-player-play\"],[class*=\"video-player\"] button,button[aria-label*=\"play\" i]');
+     if(b)b.click();
+     for(let i=0;i<32&&!(v=find());i++)await new Promise(r=>setTimeout(r,250))}
+   if(!v)return false;"
+       (when at (str "const at=" at ";if(!(v.duration>0)||at<v.duration-30)v.currentTime=at;"))
+       "try{await v.play()}catch(e){}
+   try{if(!document.fullscreenElement)await v.requestFullscreen()}catch(e){}
+   return !v.paused})()"))
+
+(defn pv-do [t body]
+  (js t (str "(()=>{const v=" pv-video-js ";" body "})()")))
+
+(def pv-status-body
+  "const base={url:location.href,title:document.title};if(!v)return base;
+   return Object.assign(base,{playing:!v.paused,time:v.currentTime*1000,
+     duration:isFinite(v.duration)?v.duration*1000:0,volume:v.muted?0:v.volume});")
+
+(defn pv-act
+  "The transport buttons on the page's own video in tab t."
+  [t action q]
+  (case action
+    "toggle" {:ok (pv-do t "if(!v)return false;v.paused?v.play():v.pause();return true")}
+    "seek"   {:ok (pv-do t (str "if(!v)return false;v.currentTime=Math.max(0,v.currentTime+(" (parse-long (:ms q)) ")/1000);return true"))}
+    "volume" {:ok (pv-do t (str "if(!v)return false;v.muted=false;v.volume=Math.min(1,Math.max(0,v.volume+(" (parse-double (:d q)) ")));return true"))}
+    "skip"   {:ok false :error "Nothing to skip on a page's own video"}
+    "full"   {:ok (pv-do t "if(!v)return false;return (document.fullscreenElement?document.exitFullscreen():v.requestFullscreen()).then(()=>true,()=>false)")}))
+
+(def pv-pause-body
+  "Pauses the page's own video when it plays with sound, and leaves full screen."
+  "if(v&&!v.paused&&!v.muted){v.pause();if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}return true")
+
+(defn pv-pause!
+  "Pause the reading tab's own video, if it is playing."
+  []
+  (when-let [p (page-target)]
+    (try (pv-do p pv-pause-body) (catch Exception _ nil))))
+
+(defn pv-guard!
+  "Each tick: the page's own video plays only while \"pv\" is current, so a
+   switch anywhere else (by any route) stops it within 3s."
+  []
+  (when (not= "pv" @service) (pv-pause!)))
+
+(def pv-owner "Who started the page's own video, whose place is saved." (atom nil))
+
+(defn pv-play!
+  "Play the reading tab's own video for user, from their place in it."
+  [user]
+  (if-let [p (page-target)]
+    (do (nf-pause)
+        (pause-youtube!)
+        (reset! service "pv")
+        (reset! pv-owner user)
+        (cdp p "Page.bringToFront")
+        (if (js p (pv-start-js (when user (get-in (load-state) [:video-place user (:url p) :time-s]))))
+          {:ok true}
+          {:ok false :error "The page's video didn't start. Is the TV signed in to the site?"}))
+    {:ok false :error "No page open for reading"}))
+
+(defn page-videos
+  "The 🎬 Videos list for reading tab p: the page's own video first, if it has
+   one, then its YouTube videos."
+  [p]
+  (let [here (try (js p page-media-js) (catch Exception _ nil))]
+    (vec (cond->> (or (js p page-videos-js) []) here (cons here)))))
+
+
 ;; ---------------------------------------------------------------- Status
 
 (defn status
@@ -910,6 +1004,9 @@
       (= "rv" svc) (if-let [t (first (filter #(= @rv-id (:id %)) ts))]
                      (assoc (yt-do t yt-status-js) :chrome true :service "rv")
                      {:chrome true :service "rv" :away true})
+      (= "pv" svc) (if pg
+                     (assoc (pv-do pg pv-status-body) :chrome true :service "pv")
+                     {:chrome true :service "pv" :away true})
       (= "yt" svc) (if-let [t (main-yt-of ts)]
                      (assoc (yt-do t yt-status-js) :chrome true :service "yt")
                      {:chrome true :service "yt" :away true})
@@ -1003,7 +1100,7 @@
    history's 100) since 2026-10-29; the phone shows 6 at a time with Newer /
    Older buttons."
   [user svc]
-  (when-let [k (and user ({"nf" :nf "yt" :yt "page" :page "rv" :page "rl" :page} svc))]
+  (when-let [k (and user ({"nf" :nf "yt" :yt "page" :page "rv" :page "rl" :page "pv" :page} svc))]
     (vec (for [w (shown-history user k)]
            {:title (or (:title w) (:url w) (:id w))
             :key   (:key w)
@@ -1039,7 +1136,8 @@
 
 (defn pause-all []
   (pause-youtube!)
-  (nf-pause))
+  (nf-pause)
+  (pv-pause!))
 
 (defn save-watched! [svc m]
   (update-state! #(assoc-in % [:watched svc] m)))
@@ -1241,6 +1339,24 @@
                    :zoom (zoom-of user)}]
             (add-history! user :page m)
             (swap! last-saved-2 assoc [user :page] m)))))))
+
+(defn record-page-video!
+  "The place in the reading tab's own video, while it is current, for whoever
+   started it (pv-play!): [:video-place user url] in state.edn, {:time-s :dur-s}.
+   Saved when it moved *save-step* seconds, like the players' places."
+  []
+  (when (= "pv" @service)
+    (when-let [user @pv-owner]
+      (when-let [p (page-target)]
+        (let [s    (pv-do p pv-status-body)
+              url  (:url s)
+              sec  (some-> (:time s) (/ 1000) long)
+              prev (get @last-saved-2 [user :pv])]
+          (when (and url sec (or (not= url (:url prev)) (>= (abs (- sec (:time-s prev 0))) *save-step*)))
+            (let [m (cond-> {:time-s sec}
+                      (some-> (:duration s) pos?) (assoc :dur-s (long (/ (:duration s) 1000))))]
+              (update-state! #(assoc-in % [:video-place user url] m))
+              (swap! last-saved-2 assoc [user :pv] (assoc m :url url)))))))))
 
 (def nf-paused-js (str "(()=>{const p=" player-js ";return p?p.isPaused():null})()"))
 (def nf-pause-js  (str "(()=>{const p=" player-js ";if(p)p.pause();return true})()"))
@@ -2059,6 +2175,9 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
           (= "rv" @service) (if-let [r (rv-target)]
                               (yt-act r action q)
                               {:ok false :error "The reading video's tab is gone — play it again from the page"})
+          (= "pv" @service) (if-let [p (page-target)]
+                              (pv-act p action q)
+                              {:ok false :error "The page is gone — open it again"})
           :else
           (case action
             "toggle"  {:ok (toggle @t)}
@@ -2074,7 +2193,9 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                        (cond-> r (and (:ok r) (not (:loaded r)) (#{"nf" "yt"} (:to q))
                                       (nil? (watched-for-2 (user-of q) (keyword (:to q)))))
                          (assoc :fresh true)))
-        "page-video" {:ok (rv-play (re-find #"[\w-]{11}" (:id q)))}
+        "page-video" (if (= "here" (:id q))
+                       (pv-play! (user-of q))
+                       {:ok (rv-play (re-find #"[\w-]{11}" (:id q)))})
         "open"       (do (set-owner! "page" (user-of q))
                          ;; bigscreen sends no user: the page is the current reader's
                          (set-opened! "page" (or (user-of q) (get @owner "page")) nil)
@@ -2102,7 +2223,7 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
         "tab"        {:ok (boolean (switch-tab-2 (:id q) (user-of q)))}
         "tab-close"  {:ok (close-tab (:id q))}
         "page-scroll" (if-let [p (reading-target)] {:ok (page-scroll p (:how q))} {:ok false :error "No page open for reading"})
-        "page-videos" (if-let [p (page-target)] {:ok true :videos (js p page-videos-js)} {:ok false :error "No page open for reading"})
+        "page-videos" (if-let [p (page-target)] {:ok true :videos (page-videos p)} {:ok false :error "No page open for reading"})
         ;; ignoreCache so a just-republished page really is fetched again;
         ;; Chrome keeps the scroll position across a reload.
         ;; Chrome's own restore puts back the pixel offset before the text size
@@ -2479,7 +2600,8 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
               (try (remember-volume-2! (:u (query req))) (catch Exception e (println "remember-volume:" (ex-message e))))))
     (when (#{"/act/toggle" "/act/seek" "/act/skip" "/act/yt-next" "/act/yt-nope" "/act/yt-endscreen"} (:uri req))
       ;; a press is an event: save the place now, not at the tick's next 15s
-      (try (record-watching-2!) (catch Exception e (println "record-watching:" (ex-message e)))))
+      (try (record-watching-2!) (catch Exception e (println "record-watching:" (ex-message e))))
+      (try (record-page-video!) (catch Exception e (println "record-page-video:" (ex-message e)))))
     res)))
 
 (defn handler-8
@@ -3595,6 +3717,7 @@ showNow();
               (try (hide-yt-chat!) (catch Exception _ nil))
               (try (hide-cursor-2!) (catch Exception _ nil))
               (try (idle-cursor!) (catch Exception _ nil))
+              (try (pv-guard!) (catch Exception _ nil))
               (try (photos-guard!) (catch Exception e (println "photos-guard:" (ex-message e))))
               (try (nf-dialog-tick!) (catch Exception e (println "nf-dialog:" (ex-message e))))
               (try (nf-still-watching!) (catch Exception e (println "nf-still-watching:" (ex-message e))))
@@ -3605,7 +3728,9 @@ showNow();
               (try (kids-tick!) (catch Exception e (println "children:" (ex-message e))))
               (when (zero? (mod n 5))
                 (try (record-watching-2!)
-                     (catch Exception e (println "record-watching:" (ex-message e))))))
+                     (catch Exception e (println "record-watching:" (ex-message e))))
+                (try (record-page-video!)
+                     (catch Exception e (println "record-page-video:" (ex-message e))))))
             (recur (inc n))))
   ;; Lost Switcher: its own loop, since a connect can take 20s
   (when switcher-tag

@@ -16,7 +16,8 @@ const want={            // phpad  vidpad readpad backDisabled
   rv:  [false,true ,false,true ],
   ph:  [true ,false,false,true ],
   yt:  [false,true ,false,true ],
-  nf:  [false,true ,false,true ]};
+  nf:  [false,true ,false,true ],
+  pv:  [false,true ,false,true ]};
 let tests=0,checks=0,fails=0;
 for(const [svc,[ph,vid,read,back]] of Object.entries(want)){
   tests++;setControls(svc);

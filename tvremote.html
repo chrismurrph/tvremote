@@ -362,8 +362,9 @@ function poll(){
     setLocal(s);
     if(!s.chrome){now.textContent='Chrome is not running on the TV';sub.textContent='';return;}
     if(s.error){now.textContent='TV tab busy';sub.textContent=s.error;return;}
-    // a video from Reading is still Reading, as far as the switch goes
-    var v=(s.service==='rv'||s.service==='rl')?'page':s.service;
+    // a video from Reading is still Reading, as far as the switch goes (a
+    // YouTube one, "rv", or the page's own, "pv")
+    var v=(s.service==='rv'||s.service==='rl'||s.service==='pv')?'page':s.service;
     if(!switching&&v&&v!==svc)setSvc(v);
     if(!switching)setControls(s.service);
     if(s.page)document.getElementById('pgtitle').textContent=s.page.title||s.page.url;
@@ -381,9 +382,9 @@ function poll(){
       document.getElementById('phundo').style.display=p.undo?'':'none';
       document.getElementById('phplay').style.visibility=p.video?'':'hidden';document.getElementById('phvid').style.display=(p.video&&!p.unconverted)?'':'none';return;}
     if(s.away){now.textContent='TV is on another page (signing in?)';sub.textContent='';return;}
-    var watching=/\/watch/.test(s.url||'');
+    var watching=/\/watch/.test(s.url||'')||s.service==='pv';
     var name=s.title||[s.picked,s.episode].filter(Boolean).join(' · ');
-    now.textContent=watching?((s.playing?'▶ Playing':'⏸ Paused')+(s.service==='rv'?' from Reading':'')+(name?' — '+name:'')):(s.service==='yt'?'On YouTube · not playing':'On Netflix · not playing');
+    now.textContent=watching?((s.playing?'▶ Playing':'⏸ Paused')+((s.service==='rv'||s.service==='pv')?' from Reading':'')+(name?' — '+name:'')):(s.service==='yt'?'On YouTube · not playing':'On Netflix · not playing');
     sub.textContent=(watching&&s.duration)?clock(s.time)+' / '+clock(s.duration)+(s.volume!=null?'  ·  vol '+Math.round(s.volume*100)+'%':''):'';
   }).catch(function(e){clearTimeout(t);polling=false;setOffline(!!(e&&e.net));document.getElementById('now').textContent='Can\'t reach the TV — is this phone on the home Wi-Fi?';document.getElementById('sub').textContent='(or the media machine is off)';});}
 
@@ -482,7 +483,7 @@ function pageVideos(b){flash(b,'busy');
     renderVideos(r.videos);})
   .catch(function(e){flash(b,'fail',900);msg('No answer: '+e);});}
 function renderVideos(videos){var box=document.getElementById('pgvideos');
-  if(!videos.length){box.innerHTML='<p class="tile" style="color:var(--soft)">No YouTube videos on this page</p>';return;}
+  if(!videos.length){box.innerHTML='<p class="tile" style="color:var(--soft)">No videos on this page</p>';return;}
   box.innerHTML='<div class="grid" style="margin-top:12px">'+videos.map(function(v){
     return '<button class="tile" onclick="playVid(this,\''+v.id+'\')"><img loading="lazy" src="'+esc(v.img)+'" alt=""><span>'+esc(v.title)+'</span></button>'}).join('')+'</div>';}
 // Links on the page being read: one opens in the TV's reading-link tab, and
