@@ -149,6 +149,7 @@ body.offline button:not(.bt),body.offline input{opacity:.4;pointer-events:none}
 <button id="phundo" style="width:100%;margin-top:10px;display:none" onclick="act(this,'ph-undo')">↩ Undo delete</button>
 </div>
 <div id="readpad" style="display:none">
+<button id="pvplay" style="width:100%;margin-bottom:10px;display:none" onclick="playVid(this,'here')">▶ Play this page's video</button>
 <div class="pad">
   <button onclick="act(this,'page-scroll?how=up')">▲ Up</button>
   <button onclick="act(this,'page-scroll?how=top')">⤒ Top</button>
@@ -373,7 +374,7 @@ function poll(){
     renderProfiles(s);
     syncList(s);dropGone(s);
     if(s.zoom)document.getElementById('zoomval').textContent=zoomText(s);
-    setShiftWide(s);
+    setShiftWide(s);setOwnVideo(s);
     if(s.service==='rl'){now.textContent='🔗 Level '+(level(s)||'?')+(s.link&&s.link.title?' — '+s.link.title:'');sub.textContent='Tap 📖 or a number to go back';return;}
     if(s.service==='page'){now.textContent='📖 Reading'+(s.page&&s.page.title?' — '+s.page.title:'');sub.textContent='';return;}
     if(s.service==='ph'){var p=s.photo||{};
@@ -680,6 +681,9 @@ var shiftOpen=false;try{shiftOpen=localStorage.getItem('tvremote-shift')==='open
 function showShift(){document.getElementById('shiftpad').style.display=shiftOpen?'':'none';}
 function toggleShift(){shiftOpen=!shiftOpen;try{localStorage.setItem('tvremote-shift',shiftOpen?'open':'closed');}catch(e){}showShift();}
 function setShiftWide(s){var off=!s.wide;document.getElementById('shiftw').disabled=off;document.getElementById('shifte').disabled=off;}
+// ▶ Play this page's video shows only when /status says the page has its own
+// video (:own-video, 2026-11-21), so the 🎬 Videos list isn't needed for it.
+function setOwnVideo(s){document.getElementById('pvplay').style.display=s['own-video']?'':'none';}
 function zoom(b,how){flash(b,'busy');
   call('page-zoom?how='+how).then(function(r){flash(b,r.ok?'done':'fail',700);
     if(r.ok)document.getElementById('zoomval').textContent=zoomText(r);else msg(r.error);})

@@ -144,6 +144,39 @@
            (record-page-video!)
            (is (= 100 (get-in @st [:video-place "chris" (:url pg) :time-s])))))))))
 
+(deftest pv-start-sound
+  (testing "play turns Substack's muted preview's sound on, at the person's volume"
+    (is (str/includes? (pv-start-js nil 0.3) "v.muted=false;v.volume=0.3;"))
+    (is (str/includes? (pv-start-js 120) "v.muted=false;"))
+    (is (not (str/includes? (pv-start-js 120) "v.volume=")))))
+
+(deftest pv-muted-preview
+  (testing "the pause script also pauses a muted preview (Substack's, on load)"
+    (is (not (str/includes? pv-pause-body "!v.muted"))))
+  (quiet
+   (let [ran (atom 0)]
+     (with-redefs [js (fn [_ e] (when (str/includes? e "v.pause()") (swap! ran inc)) true)
+                   page-target (constantly pg)]
+       (testing "the tick pauses it on Reading"
+         (with-redefs [service (atom "page")] (pv-guard!))
+         (is (= 1 @ran)))
+       (testing "but not once play was pressed"
+         (with-redefs [service (atom "pv")] (pv-guard!))
+         (is (= 1 @ran)))))))
+
+(deftest status-own-video
+  (quiet
+   (with-redefs [rl-trail (constantly nil) page-wide? (constantly false) status (constantly {:chrome true :service "page"})
+                 zoom-of (constantly 1.0) recent (constantly []) yt-gone-ids (constantly [])]
+     (testing "Reading says whether the page has its own video, for the play button"
+       (with-redefs [service (atom "page") page-own-video? (constantly true)]
+         (is (true? (:own-video (status-2 "chris")))))
+       (with-redefs [service (atom "page") page-own-video? (constantly false)]
+         (is (false? (:own-video (status-2 "chris"))))))
+     (testing "not asked on a link"
+       (with-redefs [service (atom "rl") chrome-up? (constantly false) page-own-video? (fn [] (throw (ex-info "asked" {})))]
+         (is (nil? (:own-video (status-2 "chris")))))))))
+
 (let [{:keys [fail error test pass]} (t/run-tests 'tvremote)]
   (println (str test " tests, " (+ pass fail error) " checks, " (+ fail error) " failing"))
   (System/exit (if (pos? (+ fail error)) 1 0)))

@@ -917,17 +917,20 @@
 (defn pv-start-js
   "Script that starts the page's own video (pressing the player's play button
    first if there is no <video> yet), at second `at` unless that is within 30s
-   of the end, then full screen. Answers whether it is playing."
-  [at]
+   of the end, with sound at volume `vol` (Substack's preview plays muted),
+   then full screen. Answers whether it is playing."
+  ([at] (pv-start-js at nil))
+  ([at vol]
   (str "(async()=>{const find=()=>" pv-video-js ";let v=find();
    if(!v){const b=document.querySelector('button[class*=\"video-player-play\"],[class*=\"video-player\"] button,button[aria-label*=\"play\" i]');
      if(b)b.click();
      for(let i=0;i<32&&!(v=find());i++)await new Promise(r=>setTimeout(r,250))}
    if(!v)return false;"
        (when at (str "const at=" at ";if(!(v.duration>0)||at<v.duration-30)v.currentTime=at;"))
-       "try{await v.play()}catch(e){}
+       "v.muted=false;" (when vol (str "v.volume=" vol ";")) "
+   try{await v.play()}catch(e){}
    try{if(!document.fullscreenElement)await v.requestFullscreen()}catch(e){}
-   return !v.paused})()"))
+   return !v.paused})()")))
 
 (defn pv-do [t body]
   (js t (str "(()=>{const v=" pv-video-js ";" body "})()")))
@@ -948,8 +951,10 @@
     "full"   {:ok (pv-do t "if(!v)return false;return (document.fullscreenElement?document.exitFullscreen():v.requestFullscreen()).then(()=>true,()=>false)")}))
 
 (def pv-pause-body
-  "Pauses the page's own video when it plays with sound, and leaves full screen."
-  "if(v&&!v.paused&&!v.muted){v.pause();if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}return true")
+  "Pauses the page's own video when it plays, and leaves full screen. Since
+   2026-11-21 a muted one too: Substack starts a muted preview when the post
+   loads, which looked like the remote playing it with no sound."
+  "if(v&&!v.paused){v.pause();if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}return true")
 
 (defn pv-pause!
   "Pause the reading tab's own video, if it is playing."
@@ -965,6 +970,16 @@
 
 (def pv-owner "Who started the page's own video, whose place is saved." (atom nil))
 
+(def page-own-video-js
+  "Whether the page has its own video: a <video>, or a player not started yet."
+  "!!(document.querySelector('video')||document.querySelector('[class*=\"video-player\"]'))")
+
+(defn page-own-video?
+  "Whether the reading page has its own video, for the phone's ▶ Play this
+   page's video button (2026-11-21). False when it can't tell."
+  []
+  (true? (try (some-> (page-target) (js page-own-video-js)) (catch Exception _ nil))))
+
 (defn pv-play!
   "Play the reading tab's own video for user, from their place in it."
   [user]
@@ -974,7 +989,9 @@
         (reset! service "pv")
         (reset! pv-owner user)
         (cdp p "Page.bringToFront")
-        (if (js p (pv-start-js (when user (get-in (load-state) [:video-place user (:url p) :time-s]))))
+        (if (js p (let [st (load-state)]
+                     (pv-start-js (when user (get-in st [:video-place user (:url p) :time-s]))
+                                  (when user (get-in st [:volume user])))))
           {:ok true}
           {:ok false :error "The page's video didn't start. Is the TV signed in to the site?"}))
     {:ok false :error "No page open for reading"}))
@@ -1128,7 +1145,9 @@
                                          {:zoom (tenth (min 3.0 (max 0.5 (+ b a)))) :adj a})
                                        {:zoom b})))
       ;; for ✥ Shift: ◀ and ▶ are greyed out unless the page is wider than the screen
-      (#{"page" "rl"} svc)  (assoc :wide (page-wide?)))))
+      (#{"page" "rl"} svc)  (assoc :wide (page-wide?))
+      ;; for ▶ Play this page's video: shown only when the page has its own video
+      (= "page" svc)        (assoc :own-video (page-own-video?)))))
 
 ;; ---------------------------------------------------------------- Watching
 ;; One current service — "nf", "yt" or "page" — and, for the two players, what
