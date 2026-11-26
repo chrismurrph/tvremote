@@ -37,5 +37,8 @@ function is(name,got,want){checks++;if(got!==want){fails++;console.log('FAIL',na
   {
     tests++;r=await run({service:'pv',url:'https://x.substack.com/p/a',playing:true,title:'Sub post',time:5000,duration:60000});
     is('pv now',r.now,'▶ Playing from Reading — Sub post');is('pv lit',r.lit,'page');}
+  {
+    tests++;r=await run({service:'nf',url:'https://www.netflix.com/watch/1',playing:false,title:'It','nf-error':'M7500'});
+    is('nf error now',r.now,'⚠ Netflix stopped (M7500) — press ⏯ to reload it — It');}
   console.log(tests+' tests, '+checks+' checks, '+fails+' failing');
   process.exit(fails?1:0);})();

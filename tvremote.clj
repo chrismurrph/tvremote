@@ -342,12 +342,21 @@
    const eps=ss[ss.length-1].episodes||[];const e=eps[eps.length-1];
    return !!e&&(e.id===mid||e.episodeId===mid)}catch(e){return null}})()"))
 
+(def nf-error-code-js
+  "Inside a player script: the code of the error Netflix's player is stuck on,
+   or null. 2026-11-26: M7500 (\"pause_timeout\", a film left paused too long)
+   left the player not playing while isPaused() still said false, so status
+   said playing and every press did nothing until the page was reloaded."
+  "const nfErr=(()=>{try{const e=p&&p.getError&&p.getError();if(!e)return null;
+     return (e.display&&e.display.code)||(e.messageIdList||[]).slice(-1)[0]||'error'}catch(x){return null}})();")
+
 (def status-js
   (str "const base={url:location.href,title:" nf-title-js "};
    let ep=null;try{const s=netflix.falcorCache.videos[p.getMovieId()].summary.value;
      if(s.type==='episode')ep='S'+s.season+' E'+s.episode}catch(e){}
-   if(p)return Object.assign(base,{episode:ep,playing:!p.isPaused(),time:p.getCurrentTime(),
-     duration:p.getDuration(),volume:p.getVolume()});
+   " nf-error-code-js "
+   if(p)return Object.assign(base,{episode:ep,playing:!nfErr&&!p.isPaused(),time:p.getCurrentTime(),
+     duration:p.getDuration(),volume:p.getVolume()},nfErr?{'nf-error':nfErr}:{});
    if(v)return Object.assign(base,{playing:!v.paused});
    return base;"))
 
@@ -358,6 +367,37 @@
 (defn toggle [t]
   (player-do t "if(p){p.isPaused()?p.play():p.pause();return true}
                 if(v){v.paused?v.play():v.pause();return true}return false"))
+
+(def nf-paused-js (str "(()=>{const p=" player-js ";return p?p.isPaused():null})()"))
+
+(defn nf-error
+  "The error code Netflix's player in tab t is stuck on (M7500...), or nil."
+  [t]
+  (try (player-do t (str nf-error-code-js "return nfErr")) (catch Exception _ nil)))
+
+(def nf-recovered "When nf-recover! last reloaded the Netflix tab, ms." (atom 0))
+
+(defn nf-recover!
+  "Reload Netflix tab t, stuck on a player error, and wait (up to ~20s) for its
+   player to come back without one. Netflix comes back at its place. At most
+   one reload per 20s, so quick presses don't reload it again mid-load. True
+   once the player is back."
+  [t]
+  (when (> (- (System/currentTimeMillis) @nf-recovered) 20000)
+    (reset! nf-recovered (System/currentTimeMillis))
+    (println "netflix: player error" (nf-error t) "- reloading the tab")
+    (cdp t "Page.reload" {})
+    (loop [n 0]
+      (Thread/sleep 1000)
+      (let [ok (try (and (some? (js t nf-paused-js)) (nil? (nf-error t))) (catch Exception _ false))]
+        (cond ok true
+              (< n 20) (recur (inc n))
+              :else false)))))
+
+(defn nf-play!
+  "Play Netflix tab t (not toggle: after a reload it may be playing already)."
+  [t]
+  (player-do t "if(p){if(p.isPaused())p.play();return true}if(v){if(v.paused)v.play();return true}return false"))
 
 (defn seek [t ms]
   (player-do t (str "if(!p)return false;p.seek(Math.max(0,p.getCurrentTime()+(" ms ")));return true")))
@@ -1377,7 +1417,6 @@
               (update-state! #(assoc-in % [:video-place user url] m))
               (swap! last-saved-2 assoc [user :pv] (assoc m :url url)))))))))
 
-(def nf-paused-js (str "(()=>{const p=" player-js ";return p?p.isPaused():null})()"))
 (def nf-pause-js  (str "(()=>{const p=" player-js ";if(p)p.pause();return true})()"))
 ;; 2 paused, 5 cued, 0 ended: all count as not playing
 (def yt-paused-js "(()=>{const p=document.getElementById('movie_player');
@@ -2199,8 +2238,12 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
                               {:ok false :error "The page is gone — open it again"})
           :else
           (case action
-            "toggle"  {:ok (toggle @t)}
-            "seek"    {:ok (seek @t (parse-long (:ms q)))}
+            ;; a player stuck on an error (M7500) ignores presses: reload it first
+            "toggle"  (if (nf-error @t)
+                        {:ok (boolean (and (nf-recover! @t) (nf-play! @t)))}
+                        {:ok (toggle @t)})
+            "seek"    (do (when (nf-error @t) (nf-recover! @t))
+                          {:ok (seek @t (parse-long (:ms q)))})
             "volume"  {:ok (volume @t (parse-double (:d q)))}
             "skip"    (if (skip @t) {:ok true} {:ok false :error "Nothing to skip right now"})
             "full"    (do (press @t "f") {:ok true})))

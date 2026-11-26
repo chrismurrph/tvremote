@@ -385,6 +385,8 @@ function poll(){
     if(s.away){now.textContent='TV is on another page (signing in?)';sub.textContent='';return;}
     var watching=/\/watch/.test(s.url||'')||s.service==='pv';
     var name=s.title||[s.picked,s.episode].filter(Boolean).join(' · ');
+    // Netflix stuck on its own error (M7500, left paused too long): ⏯ reloads it (2026-11-26)
+    if(s['nf-error']){now.textContent='⚠ Netflix stopped ('+s['nf-error']+') — press ⏯ to reload it'+(name?' — '+name:'');sub.textContent='';return;}
     now.textContent=watching?((s.playing?'▶ Playing':'⏸ Paused')+((s.service==='rv'||s.service==='pv')?' from Reading':'')+(name?' — '+name:'')):(s.service==='yt'?'On YouTube · not playing':'On Netflix · not playing');
     sub.textContent=(watching&&s.duration)?clock(s.time)+' / '+clock(s.duration)+(s.volume!=null?'  ·  vol '+Math.round(s.volume*100)+'%':''):'';
   }).catch(function(e){clearTimeout(t);polling=false;setOffline(!!(e&&e.net));document.getElementById('now').textContent='Can\'t reach the TV — is this phone on the home Wi-Fi?';document.getElementById('sub').textContent='(or the media machine is off)';});}
