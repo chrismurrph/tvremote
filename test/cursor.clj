@@ -43,7 +43,7 @@
   (testing "locked: Netflix and YouTube only, the style put in on both"
     (let [r (run-tick hide-cursor-2! {:locked true :answer (constantly "added")})]
       (is (= ["nf" "yt"] (:js r)))
-      (is (= [["nf" {:type "mouseMoved" :x 5 :y 5}] ["yt" {:type "mouseMoved" :x 5 :y 5}]] (:moves r)))))
+      (is (= [["nf" {:type "mouseMoved" :x 640 :y 10}] ["yt" {:type "mouseMoved" :x 640 :y 10}]] (:moves r)))))
   (testing "style already there: no made-up move"
     (is (= [] (:moves (run-tick hide-cursor-2! {:locked true :answer (constantly true)})))))
   (testing "unlocked: the same two tabs get the style taken out, no move"
@@ -59,9 +59,9 @@
     (testing "locked or not: only the three reading tabs, never Netflix, YouTube or others"
       (is (= ["pg" "rl" "rv"] (:js (run-tick idle-cursor! {:locked false}))))
       (is (= ["pg" "rl" "rv"] (:js (run-tick idle-cursor! {:locked true})))))
-    (testing "the one made-up move, at the place the page answers, only where it just hid"
+    (testing "the one made-up move, to the parking point, only where it just hid"
       (let [r (run-tick idle-cursor! {:answer (fn [t _] (if (= "rl" (:id t)) {:x 40 :y 70} true))})]
-        (is (= [["rl" {:type "mouseMoved" :x 40 :y 70}]] (:moves r)))))
+        (is (= [["rl" {:type "mouseMoved" :x 640 :y 10}]] (:moves r)))))
     (testing "no move while the page answers true"
       (is (= [] (:moves (run-tick idle-cursor! {})))))
     (testing "no reading tab remembered: nothing runs"
@@ -97,6 +97,18 @@
     (with-redefs [input-lock? false nudge-proc (atom nil)]
       (is (nil? (nudge-pointer!)))
       (is (nil? @nudge-proc)))))
+
+(deftest parking
+  (testing "a hidden pointer is parked at the middle of the top edge, over no controls"
+    (is (= {:x 640 :y 10} park-point))
+    (is (< (:y park-point) 60) "above Netflix's and YouTube's bottom controls"))
+  (testing "pointernudge.py is started with the screen size and the parking point"
+    (let [args (atom nil)]
+      (with-redefs [input-lock? true nudge-proc (atom nil) nudge-failed (atom nil)
+                    p/process (fn [_ & a] (reset! args (vec a))
+                                {:in (java.io.ByteArrayOutputStream.)})]
+        (nudge-pointer!)
+        (is (= ["1280" "720" "640" "10"] (subvec @args 2)))))))
 
 (let [{:keys [fail error test pass]} (t/run-tests 'tvremote)]
   (println (str test " tests, " (+ pass fail error) " checks, " (+ fail error) " failing"))

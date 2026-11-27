@@ -3223,6 +3223,16 @@ showNow();
 ;; mouse ("tvremote nudge", which the lock and inputwatch.py skip) and moves it
 ;; 1 pixel and back for each line it reads. It needs rw on /dev/uinput (the
 ;; udev rule in TVREMOTE.md), so it runs only where the lock can (:input-lock).
+;; Since 2026-11-28 it also parks the pointer (park-point): a hidden pointer
+;; left on Netflix's speed button had opened its Playback Speed panel.
+
+(def screen-size "The TV's screen, one mirrored logical monitor." {:w 1280 :h 720})
+
+(def park-point
+  "Where a hidden pointer is left: the middle of the top edge, over no
+   player's controls. The real pointer (pointernudge.py) and every made-up
+   CDP move go here, so Chrome's idea of the pointer matches the real one."
+  {:x (quot (:w screen-size) 2) :y 10})
 
 (def nudge-proc "pointernudge.py while it runs, or nil." (atom nil))
 (def nudge-failed "When pointernudge.py last ended or failed, ms, or nil." (atom nil))
@@ -3234,7 +3244,9 @@ showNow();
   (or (when-let [pr @nudge-proc] (when (.isAlive (:proc pr)) pr))
       (when-not (some-> @nudge-failed (> (- (System/currentTimeMillis) 300000)))
         (let [pr (p/process {:out :string :err :string}
-                            "python3" (str base-dir "/pointernudge.py"))]
+                            "python3" (str base-dir "/pointernudge.py")
+                            (str (:w screen-size)) (str (:h screen-size))
+                            (str (:x park-point)) (str (:y park-point)))]
           (reset! nudge-proc pr)
           (future (let [r @pr]
                     (reset! nudge-failed (System/currentTimeMillis))
@@ -3242,8 +3254,9 @@ showNow();
           pr))))
 
 (defn nudge-pointer!
-  "One real 1-pixel move of the TV's pointer, so a page's hidden pointer
-   really disappears. Does nothing without :input-lock."
+  "One real move of the TV's pointer, to park-point, so a page's hidden
+   pointer really disappears and rests over no controls. Does nothing without
+   :input-lock."
   []
   (when input-lock?
     (try (when-let [pr (nudge-proc!)]
@@ -3263,17 +3276,17 @@ showNow();
                             (or (on-site? "netflix.com" %) (on-site? "youtube.com" %)))
                       (targets))]
       (try (when (= "added" (js t (nocursor-js-2 on)))
-             (cdp t "Input.dispatchMouseEvent" {:type "mouseMoved" :x 5 :y 5})
+             (cdp t "Input.dispatchMouseEvent" (assoc park-point :type "mouseMoved"))
              (nudge-pointer!))
            (catch Exception _ nil)))))
 
 ;; Reading pages: the pointer hides after 3s without moving (2026-11-19), locked
 ;; or not, and comes back on the next real move. The page keeps its own timer;
 ;; the tick only installs it and gives the one made-up move Chrome needs to
-;; redraw the pointer once the style is in (as hide-cursor-2!). That move is at
-;; the pointer's last place, which the listener ignores, so it can't wake it.
-;; The real 1-pixel nudge (nudge-pointer!) comes at the pointer's real place,
-;; so the page ignores every move for 1.5s after it asks for the nudge.
+;; redraw the pointer once the style is in (as hide-cursor-2!). Since
+;; 2026-11-28 that move, like the real nudge (nudge-pointer!), goes to
+;; park-point, so the page ignores every move for 1.5s after it asks for the
+;; nudge: neither can wake it.
 
 (def idle-cursor-js
   "Installs the idle pointer hider once per document. Answers {:x :y} when it
@@ -3306,7 +3319,7 @@ showNow();
   (doseq [t (reading-tabs)]
     (try (let [r (js t idle-cursor-js)]
            (when (map? r)
-             (cdp t "Input.dispatchMouseEvent" {:type "mouseMoved" :x (:x r) :y (:y r)})
+             (cdp t "Input.dispatchMouseEvent" (assoc park-point :type "mouseMoved"))
              (nudge-pointer!)))
          (catch Exception _ nil))))
 
