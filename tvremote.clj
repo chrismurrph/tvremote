@@ -489,6 +489,48 @@
     (Thread/sleep 2500)
     (browse (str nf "/browse"))))
 
+;; Each person's Netflix profile (2026-11-27): :netflix-profile in :people. A
+;; Netflix play or browse by someone whose profile isn't the one the tab is on
+;; goes through "Who's watching?" first. Before this, the tab kept whatever was
+;; picked at the last start, so Chris got the Kids profile's parental-control
+;; block (E102).
+
+(def nf-profile-js
+  "The profile the Netflix tab is on: {gate:true} on \"Who's watching?\",
+   else {gate:false,name}, or null while Netflix hasn't loaded."
+  "(()=>{if(document.querySelector('[data-uia^=\"profile-selector+tile\"]'))return {gate:true};
+   try{const n=netflix.reactContext.models.userInfo.data.name;return n?{gate:false,name:n}:null}catch(e){return null}})()")
+
+(defn nf-profile-of
+  "user's Netflix profile name (:netflix-profile in config), or nil."
+  [user]
+  (some #(when (and (map? %) (:netflix-profile %)
+                    (= user (str/lower-case (str/replace (:name %) #"[^A-Za-z]" ""))))
+           (:netflix-profile %))
+        (:people config)))
+
+(defn ensure-nf-profile!
+  "Before a Netflix action by user: if tab t is on another profile, or on
+   \"Who's watching?\", pick user's :netflix-profile there. Nothing for someone
+   with none, or when the tab can't say which profile it is on. True when it
+   switched."
+  [t user]
+  (when-let [want (some-> user nf-profile-of)]
+    (let [same? #(= (str/lower-case want) (str/lower-case (str/trim (str %))))
+          now   (wait-for t nf-profile-js 5000)]
+      (when (and now (or (:gate now) (not (same? (:name now)))))
+        (when-not (:gate now)
+          (navigate t (str nf "/ProfilesGate"))
+          (Thread/sleep 800))
+        (if-let [i (when (= "profiles" (wait-for t kind-js 15000))
+                     (some #(when (same? (:name %)) (:i %)) (js t profiles-js)))]
+          (do (println "netflix profile:" (or (:name now) "Who's watching?") "->" want "for" user)
+              (js t (str "(()=>{const a=[...document.querySelectorAll('[data-uia^=\"profile-selector+tile\"]')][" i "];
+               if(a){a.click();return true}return false})()"))
+              (wait-for t "(()=>!document.querySelector('[data-uia^=\"profile-selector+tile\"]'))()" 15000)
+              true)
+          (println "netflix profile: no" want "on Who's watching? for" user))))))
+
 ;; ---------------------------------------------------------------- YouTube
 ;; YouTube lives in its own tab of the same Chrome. Unlike Netflix it lets the
 ;; page drive its player directly: #movie_player has playVideo/seekTo/etc.
@@ -2225,6 +2267,12 @@ new QRCode(document.getElementById('gh'),{text:'" repo-url "',width:300,height:3
     ;; looked up only when used: finding it opens a Netflix tab if there's none
     (let [t (delay (tv-target))]
       (nf-mark action)
+      ;; the presser's own Netflix profile first (2026-11-27)
+      (when (or (#{"play" "browse" "shows" "movies" "genre" "search" "home"} action)
+                (and (= "switch" action) (= "nf" (:to q)))
+                (and (= "resume" action) (= "nf" (:svc q))))
+        (try (ensure-nf-profile! @t (user-of q))
+             (catch Exception e (println "netflix profile:" (ex-message e)))))
       (case action
         ("toggle" "seek" "volume" "skip" "full")
         (cond

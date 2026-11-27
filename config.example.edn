@@ -11,6 +11,8 @@
  ;; plus children's words in the title); under other names they're refused or paused.
  ;; :fade-min 15 dims that person's picture to black over 15 minutes of watching
  ;; (sound stays); :fade-reset-min 45 brings it back after 45 minutes with nothing on.
+ ;; :netflix-profile "Ann" is the Netflix profile (as named on "Who's watching?")
+ ;; that person watches under: a Netflix play or browse by them switches to it first.
  :people []                       ; e.g. [{:name "Ann" :reading? true} "Bob"]
 
  ;; The port the phone page is served on: http://<this computer>:7700/
